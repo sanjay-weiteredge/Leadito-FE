@@ -27,9 +27,9 @@ const AllServicesScreen = ({ navigation }) => {
 
     const getIcon = (index) => {
         const icons = [
-            { name: "megaphone-outline", color: "#3B82F6", bg: "#EFF6FF" },
+            { name: "megaphone-outline", color: "#7B61FF", bg: "#F3E8FF" },
             { name: "people-outline", color: "#10B981", bg: "#ECFDF5" },
-            { name: "stats-chart-outline", color: "#8B5CF6", bg: "#F5F3FF" }
+            { name: "stats-chart-outline", color: "#9F7AEA", bg: "#F3E8FF" }
         ];
         return icons[index % icons.length];
     };
@@ -38,7 +38,7 @@ const AllServicesScreen = ({ navigation }) => {
         <ScreenWrapper>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color="#0D1B3E" />
+                    <Ionicons name="arrow-back" size={24} color="#2D1E4E" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Our Services</Text>
                 <View style={{ width: 40 }} />
@@ -46,7 +46,7 @@ const AllServicesScreen = ({ navigation }) => {
 
             {loading ? (
                 <View style={styles.center}>
-                    <ActivityIndicator size="large" color="#0047AB" />
+                    <ActivityIndicator size="large" color="#7B61FF" />
                 </View>
             ) : (
                 <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#0D1B3E',
+        color: '#2D1E4E',
     },
     center: {
         flex: 1,
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     serviceTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
         marginBottom: 6,
     },
     serviceDesc: {

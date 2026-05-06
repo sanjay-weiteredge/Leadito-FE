@@ -10,16 +10,19 @@ import {
     Image,
     Dimensions,
 } from 'react-native';
+import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Images from '../components/image';
 import authService from '../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, Alert } from 'react-native';
+import { useSubscription } from '../context/SubscriptionContext';
 
 const { width } = Dimensions.get('window');
 
 const OtpScreen = ({ navigation, route }) => {
+    const { checkSubscription } = useSubscription();
     const insets = useSafeAreaInsets();
     const { phoneNumber } = route.params || {};
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -66,18 +69,24 @@ const OtpScreen = ({ navigation, route }) => {
         try {
             const data = await authService.verifyOtp(phoneNumber, enteredOtp);
 
-            // Store token for future authenticated requests
             await AsyncStorage.setItem('userToken', data.token);
             await AsyncStorage.setItem('userProfile', JSON.stringify(data.user));
+
+            // Refresh subscription status now that we have a valid token.
+            // This ensures the correct Paid/Free badge shows immediately.
+            await checkSubscription();
 
             if (!data.user.isOnboarded) {
                 navigation.navigate('Onboarding');
             } else {
-                // If already onboarded, go to Main/Home
                 navigation.navigate('Main');
             }
         } catch (error) {
-            console.error('Verify OTP Error:', error);
+            console.error('Verify OTP Error Details:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status
+            });
             Alert.alert('Error', error.response?.data?.message || 'Invalid OTP. Please try again.');
         } finally {
             setLoading(false);
@@ -112,7 +121,7 @@ const OtpScreen = ({ navigation, route }) => {
 
                 <View style={styles.content}>
                     <View style={styles.logoContainer}>
-                        <Image source={Images.logo} style={styles.logo} resizeMode="contain" />
+                        <Image source={require('../assessts/Leadito Logo.png')} style={styles.logo} resizeMode="contain" />
                     </View>
 
                     <View style={styles.titleSection}>
@@ -136,7 +145,7 @@ const OtpScreen = ({ navigation, route }) => {
                                 onChangeText={(value) => handleChange(value, index)}
                                 onKeyPress={(e) => handleKeyPress(e, index)}
                                 ref={(ref) => (inputRefs.current[index] = ref)}
-                                selectionColor="#2563EB"
+                                selectionColor="#7405CB"
                                 autoFocus={index === 0}
                             />
                         ))}
@@ -144,7 +153,7 @@ const OtpScreen = ({ navigation, route }) => {
 
                     <View style={styles.staticHintContainer}>
                         <View style={styles.hintBadge}>
-                            <Ionicons name="information-circle-outline" size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                            <Ionicons name="information-circle-outline" size={16} color="#7B61FF" style={{ marginRight: 6 }} />
                             <Text style={styles.hintLabel}>TEST OTP</Text>
                             <Text style={styles.hintValue}>{staticOtp}</Text>
                         </View>
@@ -205,7 +214,7 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
-        paddingHorizontal: 24,
+        paddingHorizontal: scale(24),
         alignItems: 'center',
     },
     logoContainer: {
@@ -215,8 +224,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     logo: {
-        width: 250,
-        height: 100,
+        width: scale(200),
+        height: verticalScale(80),
     },
     titleSection: {
         width: '100%',
@@ -224,17 +233,17 @@ const styles = StyleSheet.create({
         marginBottom: 35,
     },
     title: {
-        fontSize: 24,
+        fontSize: fontSize(24),
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
         marginBottom: 10,
     },
     subtitle: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         color: '#64748B',
         textAlign: 'center',
-        lineHeight: 20,
-        paddingHorizontal: 15,
+        lineHeight: fontSize(20),
+        paddingHorizontal: scale(15),
     },
     otpWrapper: {
         flexDirection: 'row',
@@ -243,19 +252,19 @@ const styles = StyleSheet.create({
         marginBottom: 35,
     },
     otpInput: {
-        width: (width - 48 - 40) / 6,
-        height: 54,
+        width: (Dimensions.get('window').width - scale(48) - scale(40)) / 6,
+        height: verticalScale(54),
         borderWidth: 1,
         borderColor: '#E2E8F0',
         borderRadius: 12,
         textAlign: 'center',
-        fontSize: 22,
+        fontSize: fontSize(22),
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
         backgroundColor: '#F8FAFC',
     },
     otpInputActive: {
-        borderColor: '#2563EB',
+        borderColor: '#7B61FF',
         backgroundColor: '#FFFFFF',
         borderWidth: 2,
     },
@@ -264,35 +273,35 @@ const styles = StyleSheet.create({
     },
     hintBadge: {
         flexDirection: 'row',
-        backgroundColor: '#F0F7FF',
+        backgroundColor: '#F3E8FF',
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: 20,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#D0E4FF',
+        borderColor: '#E9D5FF',
     },
     hintLabel: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#2563EB',
+        color: '#7B61FF',
         marginRight: 6,
         letterSpacing: 1,
     },
     hintValue: {
         fontSize: 14,
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
     },
     verifyButton: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
         width: '100%',
-        height: 56,
+        height: verticalScale(56),
         borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#2563EB',
+        shadowColor: '#7B61FF',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 8,
@@ -300,7 +309,7 @@ const styles = StyleSheet.create({
     },
     verifyButtonText: {
         color: '#FFFFFF',
-        fontSize: 16,
+        fontSize: fontSize(16),
         fontWeight: 'bold',
     },
     resendWrapper: {
@@ -314,7 +323,7 @@ const styles = StyleSheet.create({
     },
     resendLink: {
         fontSize: 14,
-        color: '#2563EB',
+        color: '#7B61FF',
         fontWeight: 'bold',
     },
     timerText: {

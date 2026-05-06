@@ -1,30 +1,88 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Image, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import notificationService from '../services/notificationService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const GlobalHeader = ({ showNotification = true, onNotificationPress }) => {
+const GlobalHeader = ({ showNotification = true, onNotificationPress, showSupport = false, onSupportPress }) => {
+    const navigation = useNavigation();
+    const [unreadCount, setUnreadCount] = React.useState(0);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const fetchNotifs = async () => {
+                try {
+                    const token = await AsyncStorage.getItem('userToken');
+                    if (token) {
+                        const data = await notificationService.listNotifications();
+                        const count = data.filter(n => !n.isRead).length;
+                        setUnreadCount(count);
+                    }
+                } catch (e) {
+                    console.log('Error fetching unread count:', e);
+                }
+            };
+            if (showNotification) {
+                fetchNotifs();
+            }
+        }, [showNotification])
+    );
+
+    const handleNotifPress = () => {
+        if (onNotificationPress) {
+            onNotificationPress();
+        } else {
+            navigation.navigate('Notifications');
+        }
+    };
+
+    const handleSuppPress = () => {
+        if (onSupportPress) {
+            onSupportPress();
+        } else {
+            navigation.navigate('Support');
+        }
+    };
     return (
         <View style={styles.header}>
             <View style={styles.logoContainer}>
-                <View style={styles.logoIcon}>
-                    <Ionicons name="checkmark-done-sharp" size={20} color="#fff" />
-                </View>
+                <Image
+                    source={require('../assessts/Leadito Logo.png')}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                />
                 <Text style={styles.logoText}>
-                    Leadito <Text style={[styles.logoText, { color: '#4CAF50' }]}>AI</Text>
+                    Leadito <Text style={styles.logoAI}>AI</Text>
                 </Text>
             </View>
 
-            {showNotification && (
-                <View style={styles.headerRight}>
+            <View style={styles.headerRight}>
+                {showSupport && (
+                    <TouchableOpacity
+                        style={[styles.iconButton, { marginRight: 10 }]}
+                        onPress={handleSuppPress}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="headset-outline" size={24} color="#333" />
+                    </TouchableOpacity>
+                )}
+
+                {showNotification && (
                     <TouchableOpacity
                         style={styles.iconButton}
-                        onPress={onNotificationPress}
+                        onPress={handleNotifPress}
                         activeOpacity={0.7}
                     >
                         <Ionicons name="notifications-outline" size={24} color="#333" />
+                        {unreadCount > 0 && (
+                            <View style={styles.badge}>
+                                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                            </View>
+                        )}
                     </TouchableOpacity>
-                </View>
-            )}
+                )}
+            </View>
         </View>
     );
 };
@@ -44,19 +102,20 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    logoIcon: {
-        width: 32,
-        height: 32,
-        backgroundColor: '#0047AB',
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 10,
+    logoImage: {
+        width: 36,
+        height: 36,
+        marginRight: 8,
     },
     logoText: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#0D1B3E',
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#2D1E4E',
+    },
+    logoAI: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#7B61FF',
     },
     headerRight: {
         flexDirection: 'row',
@@ -68,6 +127,26 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8FAFC',
         justifyContent: 'center',
         alignItems: 'center',
+        position: 'relative',
+    },
+    badge: {
+        position: 'absolute',
+        top: 2,
+        right: 2,
+        backgroundColor: '#EF4444',
+        minWidth: 16,
+        height: 16,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1.5,
+        borderColor: '#fff',
+        paddingHorizontal: 3,
+    },
+    badgeText: {
+        color: '#fff',
+        fontSize: 9,
+        fontWeight: 'bold',
     },
 });
 

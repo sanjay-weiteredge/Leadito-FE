@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, AntDesign, FontAwesome } from '@expo/vector-icons';
+import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
 import Images from '../components/image';
 import authService from '../services/authService';
 import { ActivityIndicator, Alert } from 'react-native';
@@ -29,10 +30,17 @@ const LoginScreen = ({ navigation }) => {
 
         setLoading(true);
         try {
-            await authService.sendOtp(phoneNumber);
+            const data = await authService.sendOtp(phoneNumber);
+            console.log('OTP Result:', data);
             navigation.navigate('Otp', { phoneNumber });
         } catch (error) {
-            console.error('Send OTP Error:', error);
+            console.log('🔥 OTP ERROR FULL:', {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data,
+                configUrl: error.config?.url,
+                header: error.config?.headers?.Authorization
+            });
             Alert.alert('Error', error.response?.data?.message || 'Failed to send OTP. Please try again.');
         } finally {
             setLoading(false);
@@ -46,9 +54,6 @@ const LoginScreen = ({ navigation }) => {
                 style={{ flex: 1 }}
             >
                 <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                    <View style={styles.headerLogoContainer}>
-                        <Image source={Images.logo} style={styles.brandIcon} resizeMode="contain" />
-                    </View>
 
                     {/* Illustration Section */}
                     <View style={styles.illustrationContainer}>
@@ -141,52 +146,41 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
     },
     scrollContent: {
-        paddingHorizontal: 24,
-        paddingBottom: 40,
+        paddingHorizontal: scale(24),
+        paddingTop: verticalScale(60),
+        paddingBottom: verticalScale(40),
     },
-    headerLogoContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 20,
-        justifyContent: 'center',
-    },
-    brandIcon: {
-        width: 350,
-        height: 170,
-    },
-    brandTextContainer: {
-        display: 'none',
-    },
+
     illustrationContainer: {
         alignItems: 'center',
         justifyContent: 'center',
     },
     illustration: {
         width: '100%',
-        height: 220,
+        height: verticalScale(200),
     },
     welcomeContainer: {
         alignItems: 'center',
-        marginBottom: 30,
+        marginBottom: verticalScale(30),
     },
     welcomeText: {
-        fontSize: 24,
+        fontSize: fontSize(24),
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
         marginBottom: 8,
     },
     subWelcomeText: {
-        fontSize: 15,
+        fontSize: fontSize(15),
         color: '#64748B',
     },
     formSection: {
         width: '100%',
     },
     inputLabel: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: '600',
-        color: '#1E293B',
-        marginBottom: 12,
+        color: '#2D1E4E',
+        marginBottom: verticalScale(12),
     },
     phoneInputContainer: {
         flexDirection: 'row',
@@ -194,13 +188,13 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#E2E8F0',
         borderRadius: 12,
-        height: 56,
+        height: verticalScale(56),
         backgroundColor: '#F8FAFC',
     },
     countryPicker: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: scale(16),
     },
     flagIcon: {
         width: 24,
@@ -209,9 +203,9 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     countryCode: {
-        fontSize: 16,
+        fontSize: fontSize(16),
         fontWeight: '600',
-        color: '#1E293B',
+        color: '#2D1E4E',
         marginRight: 4,
     },
     divider: {
@@ -221,9 +215,9 @@ const styles = StyleSheet.create({
     },
     textInput: {
         flex: 1,
-        fontSize: 16,
-        color: '#1E293B',
-        paddingHorizontal: 16,
+        fontSize: fontSize(16),
+        color: '#2D1E4E',
+        paddingHorizontal: scale(16),
         fontWeight: '500',
     },
     infoRow: {
@@ -233,20 +227,20 @@ const styles = StyleSheet.create({
         paddingHorizontal: 2,
     },
     infoText: {
-        fontSize: 11,
+        fontSize: fontSize(11),
         color: '#64748B',
         marginLeft: 6,
-        lineHeight: 16,
+        lineHeight: fontSize(16),
     },
     primaryButton: {
-        backgroundColor: '#2563EB',
-        height: 56,
+        backgroundColor: '#7B61FF',
+        height: verticalScale(56),
         borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 30,
-        shadowColor: '#2563EB',
+        marginTop: verticalScale(30),
+        shadowColor: '#7B61FF',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 8,
@@ -254,7 +248,7 @@ const styles = StyleSheet.create({
     },
     primaryButtonText: {
         color: '#FFFFFF',
-        fontSize: 16,
+        fontSize: fontSize(16),
         fontWeight: 'bold',
         marginRight: 8,
     },
@@ -277,7 +271,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        height: 56,
+        height: verticalScale(56),
         borderRadius: 12,
         borderWidth: 1,
         borderColor: '#E2E8F0',
@@ -290,15 +284,15 @@ const styles = StyleSheet.create({
     },
     googleButtonText: {
         color: '#1E293B',
-        fontSize: 16,
+        fontSize: fontSize(16),
         fontWeight: '600',
     },
     footerContainer: {
-        marginTop: 40,
+        marginTop: verticalScale(40),
         alignItems: 'center',
     },
     footerBaseText: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         color: '#64748B',
     },
     footerLinkRow: {
@@ -307,8 +301,8 @@ const styles = StyleSheet.create({
         marginTop: 4,
     },
     footerLinkText: {
-        fontSize: 12,
-        color: '#2563EB',
+        fontSize: fontSize(12),
+        color: '#7B61FF',
         fontWeight: '500',
     },
 });

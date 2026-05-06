@@ -2,42 +2,47 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking } from 'react-native';
 
 export const CONTACT_NUMBERS = {
-    FREE: '8374891211',
-    PAID: '9912526055',
+    FREE: {
+        TEAM: 'Sales Team',
+        CALL: '8374891211',
+        WHATSAPP: '8374891211', // Admin: Update this for Free User WhatsApp
+    },
+    PAID: {
+        TEAM: 'Delivery Team',
+        CALL: '9912526055',
+        WHATSAPP: '9912526055', // Admin: Update this for Paid User WhatsApp
+    },
 };
 
-export const getContactNumber = async () => {
-    try {
-        const profileStr = await AsyncStorage.getItem('userProfile');
-        if (profileStr) {
-            const user = JSON.parse(profileStr);
-            // If user is active, they are considered a Paid User
-            if (user.isActive) {
-                return CONTACT_NUMBERS.PAID;
-            }
-        }
-        return CONTACT_NUMBERS.FREE;
-    } catch (error) {
-        console.error('Error getting contact number:', error);
-        return CONTACT_NUMBERS.FREE;
-    }
-};
-
-export const getContactNumberSync = (user) => {
+export const getContactInfo = (user) => {
     if (user && user.isActive) {
         return CONTACT_NUMBERS.PAID;
     }
     return CONTACT_NUMBERS.FREE;
 };
 
+export const getCallNumberSync = (user) => {
+    return getContactInfo(user).CALL;
+};
+
+export const getWhatsAppNumberSync = (user) => {
+    return getContactInfo(user).WHATSAPP;
+};
+
+export const getContactNumberSync = (user) => {
+    return getContactInfo(user).CALL; // Default to Call for legacy support
+};
+
 export const openWhatsApp = (phone, message = '') => {
-    const url = `whatsapp://send?phone=91${phone}&text=${encodeURIComponent(message)}`;
+    // Ensure phone is a string and clean it
+    const cleanPhone = String(phone).replace(/[^0-9]/g, '');
+    const url = `whatsapp://send?phone=91${cleanPhone}&text=${encodeURIComponent(message)}`;
     Linking.openURL(url).catch(() => {
-        // Fallback to web link if WhatsApp app is not installed
-        Linking.openURL(`https://wa.me/91${phone}?text=${encodeURIComponent(message)}`);
+        Linking.openURL(`https://wa.me/91${cleanPhone}?text=${encodeURIComponent(message)}`);
     });
 };
 
 export const makeCall = (phone) => {
-    Linking.openURL(`tel:+91${phone}`);
+    const cleanPhone = String(phone).replace(/[^0-9]/g, '');
+    Linking.openURL(`tel:+91${cleanPhone}`);
 };

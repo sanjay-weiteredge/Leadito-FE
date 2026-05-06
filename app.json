@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "leadito",
+    "name": "Leadito AI",
     "slug": "leadito",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./src/assessts/Leadito Logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -17,18 +17,19 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./src/assessts/Leadito Logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.thelaundryguyz.leadito"
+      "package": "com.thelaundryguyz.leadito",
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "e7626e81-2079-4ce1-984e-9494e75f58c1"
+        "projectId": "fc31ae1b-3cf0-476a-88ed-40bdf4ff6c5b"
       }
     }
   }

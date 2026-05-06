@@ -13,8 +13,10 @@ import {
     Platform,
     Alert,
     ActivityIndicator,
-    Linking
+    Linking,
+    RefreshControl
 } from 'react-native';
+import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import ScreenWrapper from '../components/ScreenWrapper';
@@ -22,16 +24,18 @@ import leadService from '../services/leadService';
 import GlobalHeader from '../components/GlobalHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeCall, openWhatsApp, getContactNumberSync } from '../utils/contact';
+import { useSubscription } from '../context/SubscriptionContext';
+import SubscriptionGuard from '../components/SubscriptionGuard';
 
 const { width } = Dimensions.get('window');
 
 const STATUS_MAP = {
-    'new': { label: 'New', color: '#3B82F6' },
+    'new': { label: 'New', color: '#7B61FF' },
     'not_answered': { label: 'Not Answered', color: '#F59E0B' },
     'interested': { label: 'Interested', color: '#10B981' },
     'not_interested': { label: 'Not Interested', color: '#EF4444' },
-    'follow_up': { label: 'Follow-up', color: '#8B5CF6' },
-    'appointment_booked': { label: 'Appointments Booked', color: '#6366F1' },
+    'follow_up': { label: 'Follow-up', color: '#9F7AEA' },
+    'appointment_booked': { label: 'Appointments Booked', color: '#7B61FF' },
     'closed': { label: 'Closed', color: '#64748B' },
 };
 
@@ -54,6 +58,9 @@ const LeadsScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [user, setUser] = useState(null);
+    const [page, setPage] = useState(1);
+    const [refreshing, setRefreshing] = useState(false);
+    const [pagination, setPagination] = useState({ totalPages: 1, totalLeads: 0 });
 
     // Modal States
     const [addModalVisible, setAddModalVisible] = useState(false);
@@ -61,6 +68,7 @@ const LeadsScreen = ({ navigation }) => {
     const [customModalVisible, setCustomModalVisible] = useState(false);
     const [singlePickerVisible, setSinglePickerVisible] = useState(false);
     const [pickingFor, setPickingFor] = useState(''); // 'add' or 'edit'
+    const [formErrors, setFormErrors] = useState({});
 
     const [newLead, setNewLead] = useState({
         name: '',
@@ -90,6 +98,8 @@ const LeadsScreen = ({ navigation }) => {
     const [editingNoteId, setEditingNoteId] = useState(null);
     const [editingNoteText, setEditingNoteText] = useState('');
 
+    const { isActive } = useSubscription();
+
     const loadUser = async () => {
         try {
             const profileStr = await AsyncStorage.getItem('userProfile');
@@ -102,7 +112,7 @@ const LeadsScreen = ({ navigation }) => {
     };
 
     const contactNumber = getContactNumberSync(user);
-    const isPaid = user?.isActive || false;
+    const isPaid = isActive;
 
     const handleSupportCall = () => makeCall(contactNumber);
     const handleSupportWhatsApp = () => openWhatsApp(contactNumber, "Hi, I need help with managing my leads.");
@@ -112,6 +122,7 @@ const LeadsScreen = ({ navigation }) => {
         setActiveTab('Daily');
         setCustomRange({ startDate: '', endDate: '' });
         setMarkedDates({});
+        setPage(1);
     };
 
     const openSinglePicker = (target) => {
@@ -143,7 +154,7 @@ const LeadsScreen = ({ navigation }) => {
             startDate = day.dateString;
             endDate = '';
             setMarkedDates({
-                [day.dateString]: { selected: true, startingDay: true, color: '#2563EB', textColor: 'white' }
+                [day.dateString]: { selected: true, startingDay: true, color: '#7B61FF', textColor: 'white' }
             });
             setCustomRange({ startDate, endDate });
         } else {
@@ -165,7 +176,7 @@ const LeadsScreen = ({ navigation }) => {
                 const dateString = current.toISOString().split('T')[0];
                 range[dateString] = {
                     selected: true,
-                    color: '#2563EB',
+                    color: '#7B61FF',
                     textColor: 'white',
                     startingDay: dateString === startDate,
                     endingDay: dateString === endDate
@@ -178,18 +189,22 @@ const LeadsScreen = ({ navigation }) => {
         }
     };
 
-    const fetchLeads = async () => {
+    const fetchLeads = async (pageNum = page) => {
         setLoading(true);
         try {
             const data = await leadService.listLeads({
                 search,
                 filter: activeTab,
                 startDate: customRange.startDate,
-                endDate: customRange.endDate
+                endDate: customRange.endDate,
+                page: pageNum,
+                limit: 5
             });
             setLeads(data.leads || []);
+            if (data.pagination) {
+                setPagination(data.pagination);
+            }
 
-            // Update stats properly resetting unseen counts
             if (data.stats && Array.isArray(data.stats)) {
                 let updatedStats = initialStats.map(stat => ({ ...stat, count: 0 }));
                 let total = 0;
@@ -202,9 +217,12 @@ const LeadsScreen = ({ navigation }) => {
                     }
                 });
 
-                // Prepend total leads card
+                const closedLeadCount = updatedStats.find(s => s.id === 'closed')?.count || 0;
+                const closedRatio = total > 0 ? ((closedLeadCount / total) * 100).toFixed(1) : '0.0';
+
                 const finalStats = [
-                    { id: 'all', label: 'Total Leads', color: '#1E293B', count: total },
+                    { id: 'all', label: 'Total Leads', color: '#2D1E4E', count: total },
+                    { id: 'ratio', label: 'Conversion Ratio %', color: '#7B61FF', count: `${closedRatio}%`, isRatio: true },
                     ...updatedStats
                 ];
                 setStats(finalStats);
@@ -219,10 +237,21 @@ const LeadsScreen = ({ navigation }) => {
         }
     };
 
+    // Automatically apply search filters with debounce
     useEffect(() => {
-        fetchLeads();
-        loadUser();
-    }, [search, activeTab]); // Re-fetch on search or tab change
+        if (!isActive) return;
+        const delayDebounceFn = setTimeout(() => {
+            fetchLeads(1);
+        }, 500);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [search, activeTab, customRange.startDate, customRange.endDate, isActive]);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await Promise.all([loadUser(), fetchLeads(1)]);
+        setRefreshing(false);
+    };
 
     const applyCustomRange = () => {
         if (!customRange.startDate || !customRange.endDate) {
@@ -231,14 +260,24 @@ const LeadsScreen = ({ navigation }) => {
         }
         setCustomModalVisible(false);
         setActiveTab('Custom');
-        fetchLeads();
+        setPage(1);
+        fetchLeads(1);
     };
 
     const handleAddLead = async () => {
-        if (!newLead.name || !newLead.phone) {
-            Alert.alert('Required', 'Please enter at least Name and Phone Number');
-            return;
+        const errors = {};
+        if (!newLead.name?.trim()) errors.name = 'Name is required';
+
+        // Clean phone for validation
+        const cleanPhone = newLead.phone?.replace(/[^\d]/g, '') || '';
+        if (!newLead.phone?.trim()) {
+            errors.phone = 'Phone number is required';
+        } else if (cleanPhone.length < 10) {
+            errors.phone = 'Please enter a valid 10-digit number';
         }
+
+        setFormErrors(errors);
+        if (Object.keys(errors).length > 0) return;
 
         setSaving(true);
         try {
@@ -249,6 +288,7 @@ const LeadsScreen = ({ navigation }) => {
             await leadService.createLead(payload);
             setAddModalVisible(false);
             setNewLead({ name: '', phone: '', source: 'Manual Entry', status: 'new' });
+            setFormErrors({});
             fetchLeads(); // Refresh the list
         } catch (error) {
             console.error('Add lead error:', error);
@@ -445,7 +485,7 @@ const LeadsScreen = ({ navigation }) => {
                             style={styles.actionIcon}
                             onPress={() => handleCallLead(lead.phone)}
                         >
-                            <Feather name="phone" size={18} color="#2563EB" />
+                            <Feather name="phone" size={18} color="#7B61FF" />
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={styles.actionIcon}
@@ -464,7 +504,7 @@ const LeadsScreen = ({ navigation }) => {
 
                     <View style={styles.leadStatsRow}>
                         <View style={styles.statMiniBadge}>
-                            <Feather name="message-square" size={12} color="#6366F1" />
+                            <Feather name="message-square" size={12} color="#7B61FF" />
                             <Text style={styles.statMiniText}>{lead.notesCount || 0} {lead.notesCount == 1 ? 'Follow-up' : 'Follow-ups'}</Text>
                         </View>
 
@@ -481,16 +521,29 @@ const LeadsScreen = ({ navigation }) => {
     };
 
     return (
-        <ScreenWrapper>
+        <ScreenWrapper bottomSafe={false}>
             <View style={styles.container}>
-                <GlobalHeader onNotificationPress={() => console.log('Notification Pressed')} />
+                <GlobalHeader
+                    showSupport={false}
+                    onNotificationPress={() => navigation.navigate('Notifications')}
+                />
 
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    style={styles.content}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7B61FF']} tintColor="#7B61FF" />
+                    }
+                >
                     {/* Top Row: Title & Action Icons */}
                     <View style={styles.topSection}>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.pageTitle}>Leads</Text>
-                            <View style={styles.paidUserRow}>
+                            <TouchableOpacity
+                                style={styles.paidUserRow}
+                                onPress={() => !isPaid && navigation.navigate('Plans')}
+                                disabled={isPaid}
+                            >
                                 <View style={[styles.paidBadge, !isPaid && { backgroundColor: '#FEE2E2' }]}>
                                     <Ionicons name={isPaid ? "checkmark-circle" : "close-circle"} size={12} color={isPaid ? "#10B981" : "#EF4444"} />
                                     <Text style={[styles.paidText, !isPaid && { color: '#B91C1C' }]}>{isPaid ? 'Paid User' : 'Free User'}</Text>
@@ -498,20 +551,20 @@ const LeadsScreen = ({ navigation }) => {
                                 <Text style={styles.manageLeadsText}>
                                     {isPaid ? "Manage and track your leads" : "Upgrade to unlock full potential"}
                                 </Text>
-                            </View>
+                            </TouchableOpacity>
                         </View>
 
                         <View style={styles.topIcons}>
                             <TouchableOpacity
                                 style={styles.headerIcon}
-                                onPress={() => searchInputRef.current?.focus()}
+                                onPress={() => isActive ? searchInputRef.current?.focus() : Alert.alert('Premium feature', 'Upgrade to search your leads.')}
                             >
-                                <Feather name="search" size={20} color="#64748B" />
+                                <Feather name="search" size={20} color={isActive ? "#64748B" : "#CBD5E1"} />
                             </TouchableOpacity>
 
                             <TouchableOpacity
-                                style={[styles.headerIcon, { backgroundColor: '#2563EB', borderColor: '#2563EB' }]}
-                                onPress={() => setAddModalVisible(true)}
+                                style={[styles.headerIcon, { backgroundColor: isActive ? '#7B61FF' : '#CBD5E1', borderColor: isActive ? '#7B61FF' : '#CBD5E1' }]}
+                                onPress={() => isActive ? setAddModalVisible(true) : Alert.alert('Premium feature', 'Upgrade to add manual leads.')}
                             >
                                 <Ionicons name="add" size={24} color="#fff" />
                             </TouchableOpacity>
@@ -523,23 +576,24 @@ const LeadsScreen = ({ navigation }) => {
                         {stats.map((stat, index) => (
                             <View key={index} style={styles.statCard}>
                                 <View style={styles.statLabelRow}>
-                                    <View style={[styles.statDot, { backgroundColor: stat.color }]} />
+                                    <View style={[styles.statDot, { backgroundColor: isActive ? stat.color : '#CBD5E1' }]} />
                                     <Text style={styles.statLabel}>{stat.label}</Text>
                                 </View>
-                                <Text style={styles.statCount}>{stat.count}</Text>
+                                <Text style={styles.statCount}>{isActive ? stat.count : '—'}</Text>
                             </View>
                         ))}
                     </ScrollView>
 
                     {/* Search Bar */}
-                    <View style={styles.searchBarContainer}>
+                    <View style={[styles.searchBarContainer, !isActive && { opacity: 0.6 }]}>
                         <Feather name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
                         <TextInput
                             ref={searchInputRef}
                             style={styles.searchInput}
-                            placeholder="Search by name or phone number"
+                            placeholder={isActive ? "Search by name or phone number" : "Upgrade to unlock search"}
                             value={search}
                             onChangeText={setSearch}
+                            editable={isActive}
                         />
                     </View>
 
@@ -576,7 +630,7 @@ const LeadsScreen = ({ navigation }) => {
                                 <Text style={[styles.tabText, (activeTab === 'Custom' || customRange.startDate !== '') && styles.activeTabText]}>
                                     {customRange.startDate ? `${formatDateShort(customRange.startDate)} - ${formatDateShort(customRange.endDate) || '...'}` : 'Custom Range'}
                                 </Text>
-                                <Feather name="chevron-down" size={16} color={(activeTab === 'Custom' || customRange.startDate !== '') ? '#2563EB' : '#64748B'} />
+                                <Feather name="chevron-down" size={16} color={(activeTab === 'Custom' || customRange.startDate !== '') ? '#7405CB' : '#64748B'} />
                             </TouchableOpacity>
                         </ScrollView>
                     </View>
@@ -584,39 +638,88 @@ const LeadsScreen = ({ navigation }) => {
                     {/* Leads List or Empty State */}
                     {loading ? (
                         <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                            <ActivityIndicator size="large" color="#2563EB" />
-                        </View>
-                    ) : leads.length > 0 ? (
-                        <View style={styles.leadsList}>
-                            {leads.map(renderLeadCard)}
+                            <ActivityIndicator size="large" color="#7405CB" />
                         </View>
                     ) : (
-                        <View style={styles.emptyStateContainer}>
-                            <View style={styles.emptyIllustrationBox}>
-                                <MaterialCommunityIcons name="clipboard-text-outline" size={70} color="#BFDBFE" />
-                                <View style={styles.emptyPlusBadge}>
-                                    <Feather name="plus" size={16} color="#fff" />
-                                </View>
-                            </View>
-                            <Text style={styles.emptyStateTitle}>No Leads Yet</Text>
-                            <Text style={styles.emptyStateDesc}>
-                                You don't have any leads added yet.{'\n'}Start by adding your first lead to see them here.
-                            </Text>
-                            <TouchableOpacity
-                                style={styles.emptyAddBtn}
-                                onPress={() => setAddModalVisible(true)}
-                            >
-                                <Feather name="plus" size={18} color="#fff" style={{ marginRight: 6 }} />
-                                <Text style={styles.emptyAddBtnText}>Add Your First Lead</Text>
-                            </TouchableOpacity>
+                        <SubscriptionGuard
+                            message="Leads Locked"
+                            subMessage="Upgrade to manage your leads, track follow-ups, and see detailed lead information."
+                        >
+                            {leads.length > 0 ? (
+                                <View style={styles.leadsList}>
+                                    {leads.map(renderLeadCard)}
 
-                        </View>
+                                    {/* Pagination Controls - Sleeker Design */}
+                                    {pagination.totalPages > 1 && (
+                                        <View style={styles.paginationWrapper}>
+                                            <View style={styles.paginationLine} />
+                                            <View style={styles.paginationControls}>
+                                                <TouchableOpacity
+                                                    style={[styles.miniPageBtn, page === 1 && styles.pageBtnDisabled]}
+                                                    onPress={() => {
+                                                        if (page > 1) {
+                                                            const nextP = page - 1;
+                                                            setPage(nextP);
+                                                            fetchLeads(nextP);
+                                                        }
+                                                    }}
+                                                    disabled={page === 1}
+                                                >
+                                                    <Feather name="arrow-left" size={18} color={page === 1 ? "#CBD5E1" : "#7405CB"} />
+                                                </TouchableOpacity>
+
+                                                <View style={styles.pageIndicatorBox}>
+                                                    <Text style={styles.pageNumberText}>{page}</Text>
+                                                    <Text style={styles.pageTotalText}> of {pagination.totalPages}</Text>
+                                                </View>
+
+                                                <TouchableOpacity
+                                                    style={[styles.miniPageBtn, page === pagination.totalPages && styles.pageBtnDisabled]}
+                                                    onPress={() => {
+                                                        if (page < pagination.totalPages) {
+                                                            const nextP = page + 1;
+                                                            setPage(nextP);
+                                                            fetchLeads(nextP);
+                                                        }
+                                                    }}
+                                                    disabled={page === pagination.totalPages}
+                                                >
+                                                    <Feather name="arrow-right" size={18} color={page === pagination.totalPages ? "#CBD5E1" : "#7405CB"} />
+                                                </TouchableOpacity>
+                                            </View>
+                                            <Text style={styles.resultCountText}>Showing {(page - 1) * 5 + 1}-{Math.min(page * 5, pagination.totalLeads)} of {pagination.totalLeads} Leads</Text>
+                                        </View>
+                                    )}
+                                </View>
+                            ) : (
+                                <View style={styles.emptyStateContainer}>
+                                    <View style={styles.emptyIllustrationBox}>
+                                        <MaterialCommunityIcons name="clipboard-text-outline" size={70} color="#E9D5FF" />
+                                        <View style={styles.emptyPlusBadge}>
+                                            <Feather name="plus" size={16} color="#fff" />
+                                        </View>
+                                    </View>
+                                    <Text style={styles.emptyStateTitle}>No Leads Yet</Text>
+                                    <Text style={styles.emptyStateDesc}>
+                                        You don't have any leads added yet.{'\n'}Start by adding your first lead to see them here.
+                                    </Text>
+                                    <TouchableOpacity
+                                        style={styles.emptyAddBtn}
+                                        onPress={() => setAddModalVisible(true)}
+                                    >
+                                        <Feather name="plus" size={18} color="#fff" style={{ marginRight: 6 }} />
+                                        <Text style={styles.emptyAddBtnText}>Add Your First Lead</Text>
+                                    </TouchableOpacity>
+
+                                </View>
+                            )}
+                        </SubscriptionGuard>
                     )}
 
                     {leads.length > 0 && (
                         <View style={styles.infoBanner}>
                             <View style={styles.infoIconBox}>
-                                <Feather name="lock" size={20} color="#2563EB" />
+                                <Feather name="lock" size={20} color="#7B61FF" />
                             </View>
                             <View style={styles.infoContent}>
                                 <Text style={styles.infoTitle}>Add, edit, track and manage your leads efficiently.</Text>
@@ -646,19 +749,23 @@ const LeadsScreen = ({ navigation }) => {
                                 <Text style={styles.supportBtnText}>WhatsApp</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={styles.supportBtn} onPress={handleSupportCall}>
-                                <Feather name="phone" size={18} color="#2563EB" />
+                                <Feather name="phone" size={18} color="#7B61FF" />
                                 <Text style={styles.supportBtnText}>Call Us</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
 
                     {/* Bottom Status */}
-                    <View style={styles.bottomStatus}>
+                    <TouchableOpacity
+                        style={styles.bottomStatus}
+                        onPress={() => !isPaid && navigation.navigate('Plans')}
+                        disabled={isPaid}
+                    >
                         <Feather name={isPaid ? "unlock" : "lock"} size={14} color="#64748B" />
                         <Text style={styles.bottomStatusText}>
                             {isPaid ? "You are on Paid Plan. Enjoy full access to all features." : "You are on Free Plan. Upgrade for more features."}
                         </Text>
-                    </View>
+                    </TouchableOpacity>
 
                     <View style={{ height: 20 }} />
                 </ScrollView>
@@ -675,7 +782,7 @@ const LeadsScreen = ({ navigation }) => {
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Add New Lead</Text>
-                            <TouchableOpacity onPress={() => setAddModalVisible(false)}>
+                            <TouchableOpacity onPress={() => { setAddModalVisible(false); setFormErrors({}); }}>
                                 <Ionicons name="close" size={24} color="#64748B" />
                             </TouchableOpacity>
                         </View>
@@ -683,20 +790,28 @@ const LeadsScreen = ({ navigation }) => {
                         <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
                             <Text style={styles.inputLabel}>Lead Name *</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, formErrors.name && styles.inputError]}
                                 value={newLead.name}
-                                onChangeText={(text) => setNewLead({ ...newLead, name: text })}
+                                onChangeText={(text) => {
+                                    setNewLead({ ...newLead, name: text });
+                                    if (formErrors.name) setFormErrors({ ...formErrors, name: null });
+                                }}
                                 placeholder="Enter lead name"
                             />
+                            {formErrors.name && <Text style={styles.errorText}>{formErrors.name}</Text>}
 
                             <Text style={styles.inputLabel}>Phone Number *</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, formErrors.phone && styles.inputError]}
                                 value={newLead.phone}
-                                onChangeText={(text) => setNewLead({ ...newLead, phone: text })}
+                                onChangeText={(text) => {
+                                    setNewLead({ ...newLead, phone: text });
+                                    if (formErrors.phone) setFormErrors({ ...formErrors, phone: null });
+                                }}
                                 placeholder="+91 XXXXX XXXXX"
                                 keyboardType="phone-pad"
                             />
+                            {formErrors.phone && <Text style={styles.errorText}>{formErrors.phone}</Text>}
 
                             <Text style={styles.inputLabel}>Source</Text>
                             <TextInput
@@ -714,7 +829,7 @@ const LeadsScreen = ({ navigation }) => {
                                 <Text style={[styles.datePickerValue, !newLead.followUpDate && { color: '#94A3B8' }]}>
                                     {newLead.followUpDate || 'Select Date'}
                                 </Text>
-                                <Feather name="calendar" size={18} color="#2563EB" />
+                                <Feather name="calendar" size={18} color="#7405CB" />
                             </TouchableOpacity>
 
                             <Text style={styles.inputLabel}>Lead Status</Text>
@@ -809,7 +924,7 @@ const LeadsScreen = ({ navigation }) => {
                                 <Text style={[styles.datePickerValue, !editForm.followUpDate && { color: '#94A3B8' }]}>
                                     {editForm.followUpDate || 'Select Date'}
                                 </Text>
-                                <Feather name="calendar" size={18} color="#2563EB" />
+                                <Feather name="calendar" size={18} color="#7405CB" />
                             </TouchableOpacity>
 
                             <Text style={styles.inputLabel}>Add Follow-up Note</Text>
@@ -829,10 +944,10 @@ const LeadsScreen = ({ navigation }) => {
                             <Text style={[styles.inputLabel, { marginTop: 30 }]}>Follow-up History</Text>
                             <View style={styles.historyContainer}>
                                 {historyLoading ? (
-                                    <ActivityIndicator size="small" color="#2563EB" />
+                                    <ActivityIndicator size="small" color="#7405CB" />
                                 ) : leadHistory.length > 0 ? (
                                     leadHistory.map((item, idx) => (
-                                        <View key={item.id} style={[styles.historyItem, idx === 0 && { borderLeftColor: '#2563EB' }]}>
+                                        <View key={item.id} style={[styles.historyItem, idx === 0 && { borderLeftColor: '#7405CB' }]}>
                                             <View style={styles.historyDot} />
                                             <View style={styles.historyContent}>
                                                 <View style={styles.historyHeader}>
@@ -906,12 +1021,12 @@ const LeadsScreen = ({ navigation }) => {
                             markedDates={{
                                 [(pickingFor === 'add' ? newLead.followUpDate : editForm.followUpDate)]: {
                                     selected: true,
-                                    selectedColor: '#2563EB'
+                                    selectedColor: '#7405CB'
                                 }
                             }}
                             theme={{
-                                todayTextColor: '#2563EB',
-                                arrowColor: '#2563EB',
+                                todayTextColor: '#7405CB',
+                                arrowColor: '#7405CB',
                                 textMonthFontWeight: 'bold',
                             }}
                         />
@@ -985,9 +1100,9 @@ const LeadsScreen = ({ navigation }) => {
                                 markedDates={markedDates}
                                 markingType={'period'}
                                 theme={{
-                                    selectedDayBackgroundColor: '#2563EB',
-                                    todayTextColor: '#2563EB',
-                                    arrowColor: '#2563EB',
+                                    selectedDayBackgroundColor: '#7405CB',
+                                    todayTextColor: '#7405CB',
+                                    arrowColor: '#7405CB',
                                     textMonthFontWeight: 'bold',
                                 }}
                             />
@@ -1046,7 +1161,7 @@ const styles = StyleSheet.create({
     logoBox: {
         width: 32,
         height: 32,
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7405CB',
         borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1073,7 +1188,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     pageTitle: {
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: 'bold',
         color: '#0D1B3E',
     },
@@ -1092,13 +1207,13 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     paidText: {
-        fontSize: 10,
+        fontSize: fontSize(12),
         color: '#059669',
         fontWeight: 'bold',
         marginLeft: 4,
     },
     manageLeadsText: {
-        fontSize: 11,
+        fontSize: fontSize(13),
         color: '#64748B',
     },
     topIcons: {
@@ -1139,12 +1254,12 @@ const styles = StyleSheet.create({
         marginRight: 6,
     },
     statLabel: {
-        fontSize: 10,
+        fontSize: fontSize(13),
         color: '#64748B',
         fontWeight: '600',
     },
     statCount: {
-        fontSize: 18,
+        fontSize: fontSize(20),
         fontWeight: 'bold',
         color: '#1E293B',
     },
@@ -1164,7 +1279,7 @@ const styles = StyleSheet.create({
     },
     searchInput: {
         flex: 1,
-        fontSize: 14,
+        fontSize: fontSize(16),
         color: '#1E293B',
     },
     filterHeader: {
@@ -1176,7 +1291,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 4,
     },
     filterHeaderTitle: {
-        fontSize: 14,
+        fontSize: fontSize(16),
         fontWeight: 'bold',
         color: '#64748B',
         textTransform: 'uppercase',
@@ -1186,15 +1301,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#FEF2F2',
-        paddingHorizontal: 10,
-        paddingVertical: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
         borderRadius: 20,
         gap: 6,
         borderWidth: 1,
         borderColor: '#FEE2E2',
     },
     clearBadgeText: {
-        fontSize: 11,
+        fontSize: fontSize(11),
         fontWeight: 'bold',
         color: '#EF4444',
     },
@@ -1202,32 +1317,32 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     tab: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
         backgroundColor: '#fff',
         borderWidth: 1,
         borderColor: '#F1F5F9',
     },
     activeTab: {
-        backgroundColor: '#EFF6FF',
-        borderColor: '#2563EB',
+        backgroundColor: '#F4E8FC',
+        borderColor: '#7405CB',
     },
     tabText: {
-        fontSize: 12,
+        fontSize: fontSize(14),
         color: '#64748B',
         fontWeight: '600',
     },
     activeTabText: {
-        color: '#2563EB',
+        color: '#7405CB',
     },
     tabCustom: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
         backgroundColor: '#fff',
         borderWidth: 1,
         borderColor: '#F1F5F9',
@@ -1261,7 +1376,7 @@ const styles = StyleSheet.create({
         marginRight: 12,
     },
     initialsText: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: 'bold',
     },
     leadInfo: {
@@ -1273,7 +1388,7 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     leadName: {
-        fontSize: 15,
+        fontSize: fontSize(18),
         fontWeight: 'bold',
         color: '#1E293B',
         marginRight: 8,
@@ -1284,11 +1399,11 @@ const styles = StyleSheet.create({
         borderRadius: 6,
     },
     statusText: {
-        fontSize: 10,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
     },
     leadPhone: {
-        fontSize: 13,
+        fontSize: fontSize(15),
         color: '#64748B',
     },
     leadActions: {
@@ -1334,12 +1449,12 @@ const styles = StyleSheet.create({
         borderColor: '#EDE9FE',
     },
     statMiniText: {
-        fontSize: 10,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
         color: '#6366F1',
     },
     sourceLabel: {
-        fontSize: 11,
+        fontSize: fontSize(13),
         color: '#64748B',
     },
     sourceValue: {
@@ -1347,7 +1462,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     timeText: {
-        fontSize: 11,
+        fontSize: fontSize(13),
         color: '#94A3B8',
     },
     followUpRow: {
@@ -1356,12 +1471,12 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     followUpText: {
-        fontSize: 11,
+        fontSize: fontSize(11),
         color: '#F59E0B',
         fontWeight: '600',
     },
     infoBanner: {
-        backgroundColor: '#EFF6FF',
+        backgroundColor: '#F4E8FC',
         borderRadius: 16,
         padding: 16,
         flexDirection: 'row',
@@ -1381,17 +1496,17 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     infoTitle: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
         color: '#1E293B',
         marginBottom: 2,
     },
     infoSubtitle: {
-        fontSize: 11,
+        fontSize: fontSize(11),
         color: '#64748B',
     },
     addLeadBtn: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7405CB',
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 12,
@@ -1400,7 +1515,7 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     addLeadBtnText: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
         color: '#fff',
     },
@@ -1425,12 +1540,12 @@ const styles = StyleSheet.create({
         marginRight: 12,
     },
     supportTitle: {
-        fontSize: 14,
+        fontSize: fontSize(16),
         fontWeight: 'bold',
         color: '#1E293B',
     },
     supportSubtitle: {
-        fontSize: 11,
+        fontSize: fontSize(13),
         color: '#64748B',
     },
     supportActions: {
@@ -1450,7 +1565,7 @@ const styles = StyleSheet.create({
         borderColor: '#F1F5F9',
     },
     supportBtnText: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
         color: '#1E293B',
     },
@@ -1462,7 +1577,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     bottomStatusText: {
-        fontSize: 11,
+        fontSize: fontSize(13),
         color: '#64748B',
         fontWeight: '500',
     },
@@ -1474,7 +1589,7 @@ const styles = StyleSheet.create({
     emptyIllustrationBox: {
         width: 100,
         height: 100,
-        backgroundColor: '#EFF6FF',
+        backgroundColor: '#F4E8FC',
         borderRadius: 24,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1485,7 +1600,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 10,
         right: 10,
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7405CB',
         width: 28,
         height: 28,
         borderRadius: 14,
@@ -1495,22 +1610,22 @@ const styles = StyleSheet.create({
         borderColor: '#fff',
     },
     emptyStateTitle: {
-        fontSize: 22,
+        fontSize: fontSize(22),
         fontWeight: 'bold',
         color: '#1E293B',
         marginBottom: 8,
     },
     emptyStateDesc: {
         textAlign: 'center',
-        fontSize: 13,
+        fontSize: fontSize(13),
         color: '#64748B',
-        lineHeight: 20,
-        marginBottom: 24,
-        paddingHorizontal: 20,
+        lineHeight: fontSize(20),
+        marginBottom: verticalScale(24),
+        paddingHorizontal: scale(20),
     },
     emptyAddBtn: {
         flexDirection: 'row',
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7405CB',
         paddingHorizontal: 24,
         paddingVertical: 14,
         borderRadius: 12,
@@ -1520,7 +1635,7 @@ const styles = StyleSheet.create({
     emptyAddBtnText: {
         color: '#fff',
         fontWeight: 'bold',
-        fontSize: 14,
+        fontSize: fontSize(14),
     },
     featureCardsRow: {
         flexDirection: 'row',
@@ -1545,13 +1660,13 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     featureTitle: {
-        fontSize: 13,
+        fontSize: fontSize(13),
         fontWeight: 'bold',
         color: '#1E293B',
         marginBottom: 6,
     },
     featureDesc: {
-        fontSize: 11,
+        fontSize: fontSize(11),
         color: '#64748B',
         lineHeight: 16,
     },
@@ -1575,7 +1690,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     modalTitle: {
-        fontSize: 20,
+        fontSize: fontSize(20),
         fontWeight: 'bold',
         color: '#1E293B',
     },
@@ -1583,33 +1698,43 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     inputLabel: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: '600',
         color: '#475569',
         marginBottom: 8,
-        marginTop: 12,
+        marginTop: verticalScale(12),
     },
     input: {
         backgroundColor: '#F8FAFC',
         borderWidth: 1,
         borderColor: '#E2E8F0',
         borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        fontSize: 15,
+        paddingHorizontal: scale(16),
+        paddingVertical: verticalScale(14),
+        fontSize: fontSize(15),
         color: '#1E293B',
     },
+    inputError: {
+        borderColor: '#EF4444',
+        backgroundColor: '#FEF2F2',
+    },
+    errorText: {
+        color: '#EF4444',
+        fontSize: fontSize(12),
+        marginTop: 4,
+        marginLeft: 4,
+    },
     saveButton: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
         borderRadius: 12,
-        paddingVertical: 16,
+        paddingVertical: verticalScale(16),
         alignItems: 'center',
-        marginTop: 30,
-        marginBottom: 20,
+        marginTop: verticalScale(30),
+        marginBottom: verticalScale(20),
     },
     saveButtonText: {
         color: '#fff',
-        fontSize: 16,
+        fontSize: fontSize(16),
         fontWeight: 'bold',
     },
     chipsRow: {
@@ -1627,7 +1752,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8FAFC',
     },
     statusChipText: {
-        fontSize: 13,
+        fontSize: fontSize(13),
         fontWeight: '600',
     },
     deleteButton: {
@@ -1643,7 +1768,7 @@ const styles = StyleSheet.create({
     },
     deleteButtonText: {
         color: '#EF4444',
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: 'bold',
     },
     clearFilterBtn: {
@@ -1666,7 +1791,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     clearFilterText: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
         color: '#EF4444',
     },
@@ -1693,7 +1818,7 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     dateInfoValue: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: 'bold',
         color: '#1E293B',
     },
@@ -1710,7 +1835,7 @@ const styles = StyleSheet.create({
         marginTop: 4,
     },
     datePickerValue: {
-        fontSize: 15,
+        fontSize: fontSize(15),
         color: '#1E293B',
     },
     datePickerModalContent: {
@@ -1761,9 +1886,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     historyNote: {
-        fontSize: 13,
+        fontSize: fontSize(13),
         color: '#1E293B',
-        lineHeight: 18,
+        lineHeight: fontSize(18),
         fontWeight: '500',
     },
     historyDate: {
@@ -1778,8 +1903,59 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     emptyHistoryText: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         color: '#64748B',
+    },
+    paginationWrapper: {
+        alignItems: 'center',
+        marginTop: 30,
+        marginBottom: 40,
+    },
+    paginationLine: {
+        width: '40%',
+        height: 1,
+        backgroundColor: '#F1F5F9',
+        marginBottom: 20,
+    },
+    paginationControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 20,
+    },
+    miniPageBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+        elevation: 2,
+    },
+    pageIndicatorBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    pageNumberText: {
+        fontSize: fontSize(16),
+        fontWeight: 'bold',
+        color: '#7405CB',
+    },
+    pageTotalText: {
+        fontSize: fontSize(15),
+        color: '#64748B',
+        fontWeight: '500',
+    },
+    resultCountText: {
+        marginTop: 12,
+        fontSize: fontSize(11),
+        color: '#94A3B8',
+        fontWeight: '500',
     },
 });
 

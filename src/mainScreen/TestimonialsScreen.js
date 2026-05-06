@@ -29,7 +29,7 @@ const TestimonialsScreen = ({ navigation }) => {
         <ScreenWrapper>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color="#0D1B3E" />
+                    <Ionicons name="arrow-back" size={24} color="#2D1E4E" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Client Testimonials</Text>
                 <View style={{ width: 40 }} />
@@ -37,24 +37,15 @@ const TestimonialsScreen = ({ navigation }) => {
 
             {loading ? (
                 <View style={styles.center}>
-                    <ActivityIndicator size="large" color="#0047AB" />
+                    <ActivityIndicator size="large" color="#7B61FF" />
                 </View>
             ) : (
                 <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                     {testimonials.map((t) => (
                         <View key={t.id} style={styles.testimonialCard}>
                             <View style={styles.cardHeader}>
-                                <Image
-                                    source={{ uri: t.avatarUrl || `https://ui-avatars.com/api/?name=${t.name}&background=random` }}
-                                    style={styles.avatar}
-                                />
                                 <View style={styles.nameContainer}>
                                     <View style={styles.nameRow}>
-                                        {t.socialIcon && (
-                                            <View style={styles.socialIcon}>
-                                                <FontAwesome5 name={t.socialIcon} size={10} color="#fff" />
-                                            </View>
-                                        )}
                                         <Text style={styles.userName}>{t.name}</Text>
                                     </View>
                                     <Text style={styles.userRole}>{t.role || 'Business Owner'}</Text>
@@ -116,7 +107,7 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#0D1B3E',
+        color: '#2D1E4E',
     },
     center: {
         flex: 1,
@@ -144,12 +135,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 15,
     },
-    avatar: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        marginRight: 12,
-    },
     nameContainer: {
         flex: 1,
     },
@@ -169,7 +154,7 @@ const styles = StyleSheet.create({
     userName: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
     },
     userRole: {
         fontSize: 12,

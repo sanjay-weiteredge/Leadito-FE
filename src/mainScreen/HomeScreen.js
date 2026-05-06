@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, RefreshControl } from 'react-native';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons, Entypo } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,11 +8,14 @@ import { useNavigation } from '@react-navigation/native';
 import publicService from '../services/publicService';
 import GlobalHeader from '../components/GlobalHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { makeCall, openWhatsApp, getContactNumberSync } from '../utils/contact';
+import { makeCall, openWhatsApp, getContactInfo, getCallNumberSync, getWhatsAppNumberSync } from '../utils/contact';
+import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
+import { useSubscription } from '../context/SubscriptionContext';
 
 const { width } = Dimensions.get('window');
 
 const HomeScreen = () => {
+    const { isActive } = useSubscription();
     const navigation = useNavigation();
     const video = React.useRef(null);
     const [status, setStatus] = React.useState({});
@@ -21,10 +24,17 @@ const HomeScreen = () => {
     const [services, setServices] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [user, setUser] = React.useState(null);
+    const [refreshing, setRefreshing] = React.useState(false);
 
     React.useEffect(() => {
         fetchHomeContent();
         loadUser();
+    }, []);
+
+    const onRefresh = React.useCallback(async () => {
+        setRefreshing(true);
+        await Promise.all([fetchHomeContent(), loadUser()]);
+        setRefreshing(false);
     }, []);
 
     const loadUser = async () => {
@@ -38,10 +48,15 @@ const HomeScreen = () => {
         }
     };
 
-    const contactNumber = getContactNumberSync(user);
+    const handleCall = () => {
+        const num = getCallNumberSync(user);
+        makeCall(num);
+    };
 
-    const handleCall = () => makeCall(contactNumber);
-    const handleWhatsApp = () => openWhatsApp(contactNumber, "Hi, I'm interested in Leadito AI services.");
+    const handleWhatsApp = () => {
+        const num = getWhatsAppNumberSync(user);
+        openWhatsApp(num, "Hi, I'm interested in Leadito AI services.");
+    };
 
     const fetchHomeContent = async () => {
         try {
@@ -64,10 +79,21 @@ const HomeScreen = () => {
     };
 
     return (
-        <ScreenWrapper>
-            <GlobalHeader onNotificationPress={() => console.log('Notification Pressed')} />
+        <ScreenWrapper bottomSafe={false}>
+            <GlobalHeader onNotificationPress={() => navigation.navigate('Notifications')} />
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={['#7B61FF']} // Android
+                        tintColor="#7B61FF" // iOS
+                    />
+                }
+            >
                 <View style={styles.heroSection}>
                     <Image
                         source={require('../assessts/banner.png')}
@@ -161,15 +187,8 @@ const HomeScreen = () => {
                             {testimonials.slice(0, 3).map((t, index) => (
                                 <View key={t.id || index} style={styles.testimonialCard}>
                                     <View style={styles.testimonialHeader}>
-                                        <Image
-                                            source={{ uri: t.avatarUrl || `https://ui-avatars.com/api/?name=${t.name}&background=random` }}
-                                            style={styles.userAvatar}
-                                        />
                                         <View style={styles.userInfo}>
                                             <View style={styles.nameRow}>
-                                                <View style={styles.socialIcon}>
-                                                    <FontAwesome5 name="google" size={10} color="#fff" />
-                                                </View>
                                                 <Text style={styles.userName}>{t.name}</Text>
                                             </View>
                                             <Text style={styles.userRole}>{t.role || t.businessName || 'Business Owner'}</Text>
@@ -217,7 +236,7 @@ const HomeScreen = () => {
                     <Text style={styles.mainSectionTitle}>About Company</Text>
                     <View style={styles.aboutCard}>
                         <LinearGradient
-                            colors={['#1D6AF2', '#0047AB']}
+                            colors={['#7B61FF', '#4834D4']}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                             style={styles.aboutGradient}
@@ -225,7 +244,7 @@ const HomeScreen = () => {
                             <View style={styles.aboutHeader}>
                                 <View style={styles.aboutIconContainer}>
                                     <View style={styles.aboutIconBg}>
-                                        <Ionicons name="rocket" size={22} color="#1D6AF2" />
+                                        <Ionicons name="rocket" size={22} color="#7B61FF" />
                                     </View>
                                 </View>
                                 <Text style={styles.aboutTitle}>Our Mission & Expertise</Text>
@@ -256,7 +275,7 @@ const HomeScreen = () => {
                     <View style={styles.featuresRow}>
                         <View style={styles.featureCard}>
                             <View style={styles.featureIconContainer}>
-                                <MaterialCommunityIcons name="target" size={24} color="#448AFF" />
+                                <MaterialCommunityIcons name="target" size={24} color="#9F7AEA" />
                             </View>
                             <Text style={styles.featureTitle}>Real-time Lead{"\n"}Tracking</Text>
                             <Text style={styles.featureDescription}>Monitor leads{"\n"}instantly.</Text>
@@ -264,7 +283,7 @@ const HomeScreen = () => {
 
                         <View style={styles.featureCard}>
                             <View style={styles.featureIconContainer}>
-                                <MaterialCommunityIcons name="view-dashboard" size={24} color="#448AFF" />
+                                <MaterialCommunityIcons name="view-dashboard" size={24} color="#9F7AEA" />
                             </View>
                             <Text style={styles.featureTitle}>Transparent ROI{"\n"}Dashboard</Text>
                             <Text style={styles.featureDescription}>Clear results{"\n"}visibility.</Text>
@@ -272,7 +291,7 @@ const HomeScreen = () => {
 
                         <View style={styles.featureCard}>
                             <View style={styles.featureIconContainer}>
-                                <MaterialCommunityIcons name="rocket-launch" size={24} color="#448AFF" />
+                                <MaterialCommunityIcons name="rocket-launch" size={24} color="#9F7AEA" />
                             </View>
                             <Text style={styles.featureTitle}>Proven Ad{"\n"}Strategies</Text>
                             <Text style={styles.featureDescription}>Data-backed{"\n"}campaigns.</Text>
@@ -280,7 +299,7 @@ const HomeScreen = () => {
 
                         <View style={styles.featureCard}>
                             <View style={styles.featureIconContainer}>
-                                <MaterialCommunityIcons name="headset" size={24} color="#448AFF" />
+                                <MaterialCommunityIcons name="headset" size={24} color="#9F7AEA" />
                             </View>
                             <Text style={styles.featureTitle}>Dedicated{"\n"}Support</Text>
                             <Text style={styles.featureDescription}>Expert help{"\n"}always on.</Text>
@@ -288,7 +307,7 @@ const HomeScreen = () => {
 
                         <View style={styles.featureCard}>
                             <View style={styles.featureIconContainer}>
-                                <MaterialCommunityIcons name="currency-usd" size={24} color="#448AFF" />
+                                <MaterialCommunityIcons name="currency-usd" size={24} color="#9F7AEA" />
                             </View>
                             <Text style={styles.featureTitle}>Low-cost Lead{"\n"}Generation</Text>
                             <Text style={styles.featureDescription}>Maximize ROI{"\n"}per lead.</Text>
@@ -296,7 +315,7 @@ const HomeScreen = () => {
 
                         <View style={styles.featureCard}>
                             <View style={styles.featureIconContainer}>
-                                <MaterialCommunityIcons name="trending-up" size={24} color="#448AFF" />
+                                <MaterialCommunityIcons name="trending-up" size={24} color="#9F7AEA" />
                             </View>
                             <Text style={styles.featureTitle}>Scalable Grow{"\n"}results</Text>
                             <Text style={styles.featureDescription}>Grow your{"\n"}business fast.</Text>
@@ -319,12 +338,12 @@ const HomeScreen = () => {
                             onPress={() => navigation.navigate('Services')}
                         >
                             <View style={[styles.serviceIconContainer, {
-                                backgroundColor: index % 3 === 0 ? '#EFF6FF' : index % 3 === 1 ? '#ECFDF5' : '#F5F3FF'
+                                backgroundColor: index % 3 === 0 ? '#F4E8FC' : index % 3 === 1 ? '#ECFDF5' : '#F5F3FF'
                             }]}>
                                 <Ionicons
                                     name={index % 3 === 0 ? "megaphone-outline" : index % 3 === 1 ? "people-outline" : "stats-chart-outline"}
                                     size={24}
-                                    color={index % 3 === 0 ? '#3B82F6' : index % 3 === 1 ? '#10B981' : '#8B5CF6'}
+                                    color={index % 3 === 0 ? '#9333EA' : index % 3 === 1 ? '#10B981' : '#8B5CF6'}
                                 />
                             </View>
                             <View style={styles.serviceInfo}>
@@ -340,7 +359,7 @@ const HomeScreen = () => {
                         onPress={() => navigation.navigate('Services')}
                     >
                         <Text style={styles.exploreAllText}>Explore All Services</Text>
-                        <Ionicons name="arrow-forward" size={16} color="#3B82F6" />
+                        <Ionicons name="arrow-forward" size={16} color="#9333EA" />
                     </TouchableOpacity>
 
                     {services.length === 0 && !loading && (
@@ -395,24 +414,24 @@ const HomeScreen = () => {
 
                 <View style={styles.contactSection}>
                     <View style={styles.contactIllustrationContainer}>
-                        <MaterialCommunityIcons name="rocket-launch" size={100} color="#448AFF" style={styles.rocketIcon} />
+                        <MaterialCommunityIcons name="rocket-launch" size={100} color="#9F7AEA" style={styles.rocketIcon} />
                         <View style={styles.chartBars}>
-                            <View style={[styles.chartBar, { height: 20, backgroundColor: '#E0E7FF' }]} />
-                            <View style={[styles.chartBar, { height: 35, backgroundColor: '#C7D2FE' }]} />
-                            <View style={[styles.chartBar, { height: 50, backgroundColor: '#818CF8' }]} />
-                            <View style={[styles.chartBar, { height: 70, backgroundColor: '#4F46E5' }]} />
+                            <View style={[styles.chartBar, { height: 20, backgroundColor: '#F3E8FF' }]} />
+                            <View style={[styles.chartBar, { height: 35, backgroundColor: '#E9D5FF' }]} />
+                            <View style={[styles.chartBar, { height: 50, backgroundColor: '#D8B4FE' }]} />
+                            <View style={[styles.chartBar, { height: 70, backgroundColor: '#A855F7' }]} />
                         </View>
                     </View>
 
                     <Text style={styles.contactTitle}>Let’s Grow Your Business Together</Text>
-                    <Text style={styles.contactSubtitle}>Have questions? We’re here to help you succeed.</Text>
+                    <Text style={styles.contactSubtitle}>Talk to our {getContactInfo(user).TEAM} for expert assistance.</Text>
 
                     <View style={styles.contactItems}>
                         <TouchableOpacity style={styles.contactItem} onPress={handleCall}>
                             <View style={styles.contactIconBg}>
                                 <Ionicons name="call" size={20} color="#1D6AF2" />
                             </View>
-                            <Text style={styles.contactItemText}>+91 {contactNumber}</Text>
+                            <Text style={styles.contactItemText}>Call {getContactInfo(user).TEAM.split(' ')[0]}</Text>
                         </TouchableOpacity>
                         <View style={styles.contactItem}>
                             <View style={styles.contactIconBg}>
@@ -456,7 +475,7 @@ const HomeScreen = () => {
                 </View>
 
                 {/* Extra Padding for Bottom Tab */}
-                <View style={{ height: 30 }} />
+                <View style={{ height: 10 }} />
             </ScrollView>
         </ScreenWrapper>
     );
@@ -491,13 +510,13 @@ const styles = StyleSheet.create({
     seeAllText: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#0047AB',
+        color: '#7B61FF',
     },
     exploreAllServices: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#F0F7FF',
+        backgroundColor: '#F3E8FF',
         paddingVertical: 12,
         borderRadius: 14,
         marginTop: 10,
@@ -506,7 +525,7 @@ const styles = StyleSheet.create({
     exploreAllText: {
         fontSize: 14,
         fontWeight: 'bold',
-        color: '#3B82F6',
+        color: '#9333EA',
     },
     iconButton: {
         padding: 5,
@@ -514,7 +533,7 @@ const styles = StyleSheet.create({
     logoText: {
         fontSize: 22,
         fontWeight: 'bold',
-        color: '#0047AB',
+        color: '#7B61FF',
     },
     headerRight: {
         flexDirection: 'row',
@@ -525,7 +544,7 @@ const styles = StyleSheet.create({
     heroSection: {
         width: '100%',
         height: 220,
-        backgroundColor: '#ebf5ff',
+        backgroundColor: '#F3E8FF',
         marginTop: 10,
         overflow: 'hidden',
     },
@@ -543,19 +562,19 @@ const styles = StyleSheet.create({
         width: '75%',
     },
     heroTitle: {
-        fontSize: 20,
+        fontSize: 24,
         fontWeight: '900',
-        color: '#1a237e',
-        lineHeight: 26,
-        marginBottom: 6,
+        color: '#2D1E4E',
+        lineHeight: 30,
+        marginBottom: 8,
         textShadowColor: 'rgba(255, 255, 255, 0.8)',
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 2,
     },
     heroSubtitle: {
-        fontSize: 13,
+        fontSize: 16,
         color: '#34495e',
-        lineHeight: 18,
+        lineHeight: 22,
         marginBottom: 15,
         fontWeight: '600',
     },
@@ -569,8 +588,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
+        paddingVertical: verticalScale(8),
+        paddingHorizontal: scale(12),
         borderRadius: 8,
         elevation: 3,
     },
@@ -579,8 +598,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
+        paddingVertical: verticalScale(8),
+        paddingHorizontal: scale(12),
         borderRadius: 8,
         borderWidth: 1,
         borderColor: '#e0e0e0',
@@ -590,30 +609,30 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontWeight: 'bold',
         marginLeft: 6,
-        fontSize: 13,
+        fontSize: fontSize(13),
     },
     whatsappButtonText: {
         color: '#263238',
         fontWeight: 'bold',
         marginLeft: 6,
-        fontSize: 13,
+        fontSize: fontSize(13),
     },
     section: {
         paddingHorizontal: 20,
         marginTop: 25,
     },
     mainSectionTitle: {
-        fontSize: 18,
+        fontSize: fontSize(22),
         fontWeight: 'bold',
-        color: '#0D1B3E',
-        marginBottom: 15,
+        color: '#2D1E4E',
+        marginBottom: verticalScale(15),
     },
     videoCard: {
-        backgroundColor: '#F0F7FF',
+        backgroundColor: '#F3E8FF',
         borderRadius: 20,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: '#E1E9F5',
+        borderColor: '#E9D5FF',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
@@ -621,7 +640,7 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     videoThumbnail: {
-        height: 140,
+        height: verticalScale(140),
         width: '100%',
         backgroundColor: '#000',
         position: 'relative',
@@ -644,7 +663,7 @@ const styles = StyleSheet.create({
     playButtonContainer: {
         width: 36,
         height: 36,
-        backgroundColor: 'rgba(0, 71, 171, 0.9)',
+        backgroundColor: 'rgba(123, 97, 255, 0.9)',
         borderRadius: 18,
         justifyContent: 'center',
         alignItems: 'center',
@@ -656,21 +675,21 @@ const styles = StyleSheet.create({
         padding: 10,
     },
     sectionTitle: {
-        fontSize: 14,
+        fontSize: 18,
         fontWeight: '800',
-        color: '#0D1B3E',
+        color: '#2D1E4E',
     },
     sectionSubtitle: {
-        fontSize: 12,
+        fontSize: 14,
         color: '#556987',
         marginTop: 6,
-        lineHeight: 20,
+        lineHeight: 22,
     },
     aboutCard: {
         borderRadius: 24,
         overflow: 'hidden',
         elevation: 8,
-        shadowColor: '#1D6AF2',
+        shadowColor: '#7B61FF',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.3,
         shadowRadius: 15,
@@ -702,22 +721,22 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     aboutTitle: {
-        fontSize: 18,
+        fontSize: fontSize(22),
         fontWeight: 'bold',
         color: '#FFFFFF',
     },
     aboutText: {
-        fontSize: 14,
+        fontSize: fontSize(16),
         color: 'rgba(255, 255, 255, 0.9)',
-        lineHeight: 22,
+        lineHeight: fontSize(24),
         fontWeight: '500',
     },
     aboutStatsRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 20,
+        marginTop: verticalScale(20),
         backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        padding: 15,
+        padding: moderateScale(15),
         borderRadius: 16,
         justifyContent: 'space-around',
     },
@@ -725,14 +744,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     aboutStatLabel: {
-        fontSize: 10,
+        fontSize: fontSize(10),
         color: 'rgba(255, 255, 255, 0.7)',
         textTransform: 'uppercase',
         fontWeight: 'Bold',
         marginBottom: 2,
     },
     aboutStatValue: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: '900',
         color: '#fff',
     },
@@ -751,10 +770,10 @@ const styles = StyleSheet.create({
     },
     testimonialCard: {
         backgroundColor: '#F4F8FF',
-        padding: 20,
+        padding: moderateScale(20),
         borderRadius: 20,
         width: width * 0.86,
-        marginRight: 15,
+        marginRight: scale(15),
         borderWidth: 1,
         borderColor: '#EBF2FF',
     },
@@ -783,12 +802,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 15,
     },
-    userAvatar: {
-        width: 54,
-        height: 54,
-        borderRadius: 27,
-        marginRight: 12,
-    },
     userInfo: {
         flex: 1,
     },
@@ -807,12 +820,12 @@ const styles = StyleSheet.create({
         marginRight: 6,
     },
     userName: {
-        fontSize: 16,
+        fontSize: fontSize(18),
         fontWeight: 'bold',
-        color: '#0D1B3E',
+        color: '#2D1E4E',
     },
     userRole: {
-        fontSize: 13,
+        fontSize: fontSize(15),
         color: '#6E7A91',
     },
     ratingBox: {
@@ -825,14 +838,14 @@ const styles = StyleSheet.create({
         marginRight: 4,
     },
     ratingText: {
-        fontSize: 11,
+        fontSize: fontSize(13),
         color: '#6E7A91',
         fontWeight: '600',
     },
     testimonialText: {
-        fontSize: 15,
+        fontSize: fontSize(11.5),
         color: '#4A5568',
-        lineHeight: 24,
+        lineHeight: fontSize(17),
         fontWeight: '500',
     },
     seeAllLink: {
@@ -842,8 +855,8 @@ const styles = StyleSheet.create({
         marginTop: 20,
     },
     seeAllText: {
-        color: '#0047AB',
-        fontSize: 15,
+        color: '#7B61FF',
+        fontSize: fontSize(17),
         fontWeight: 'bold',
     },
     serviceItem: {
@@ -855,7 +868,7 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: '#E8F1FF',
+        borderColor: '#F3E8FF',
     },
     serviceIconContainer: {
         width: 40,
@@ -869,15 +882,15 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     serviceTitle: {
-        fontSize: 16,
+        fontSize: fontSize(18),
         fontWeight: 'bold',
-        color: '#0D1B3E',
+        color: '#2D1E4E',
         marginBottom: 2,
     },
     serviceDescription: {
-        fontSize: 12,
+        fontSize: fontSize(14),
         color: '#6E7A91',
-        lineHeight: 18,
+        lineHeight: fontSize(20),
     },
     featuresRow: {
         flexDirection: 'row',
@@ -894,34 +907,34 @@ const styles = StyleSheet.create({
         borderRadius: 15,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#EBF2FF',
+        borderColor: '#F3E8FF',
         marginBottom: 8,
     },
     featureIconContainer: {
         width: 44,
         height: 44,
-        backgroundColor: '#F0F7FF',
+        backgroundColor: '#F3E8FF',
         borderRadius: 15,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 8,
     },
     featureTitle: {
-        fontSize: 10,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
-        color: '#0D1B3E',
+        color: '#2D1E4E',
         textAlign: 'center',
-        lineHeight: 12,
+        lineHeight: fontSize(14),
         marginBottom: 4,
     },
     featureDescription: {
-        fontSize: 8,
+        fontSize: fontSize(10),
         color: '#556987',
         textAlign: 'center',
-        lineHeight: 10,
+        lineHeight: fontSize(12),
     },
     ctaSection: {
-        backgroundColor: '#F3F8FF',
+        backgroundColor: '#F3E8FF',
         marginHorizontal: 15,
         marginTop: 30,
         paddingVertical: 35,
@@ -930,20 +943,20 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     ctaTitle: {
-        fontSize: 16,
+        fontSize: fontSize(20),
         fontWeight: 'bold',
         color: '#1E293B',
         textAlign: 'center',
-        marginBottom: 8,
+        marginBottom: verticalScale(10),
     },
     ctaSubtitle: {
-        fontSize: 11,
+        fontSize: fontSize(14),
         color: '#64748B',
         textAlign: 'center',
-        marginBottom: 15,
+        marginBottom: verticalScale(15),
     },
     ctaPrimaryButton: {
-        backgroundColor: '#1D6AF2',
+        backgroundColor: '#7B61FF',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -972,7 +985,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     contactSection: {
-        backgroundColor: '#F3F8FF',
+        backgroundColor: '#F3E8FF',
         marginHorizontal: 15,
         marginTop: 30,
         padding: 25,
@@ -1002,14 +1015,14 @@ const styles = StyleSheet.create({
         borderRadius: 3,
     },
     contactTitle: {
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: '900',
         color: '#0F172A',
-        lineHeight: 32,
-        marginBottom: 8,
+        lineHeight: 36,
+        marginBottom: 10,
     },
     contactSubtitle: {
-        fontSize: 14,
+        fontSize: 16,
         color: '#64748B',
         marginBottom: 25,
     },
@@ -1025,7 +1038,7 @@ const styles = StyleSheet.create({
     contactIconBg: {
         width: 36,
         height: 36,
-        backgroundColor: '#EBF2FF',
+        backgroundColor: '#F3E8FF',
         borderRadius: 18,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1055,13 +1068,13 @@ const styles = StyleSheet.create({
         width: 36,
         height: 36,
         borderRadius: 18,
-        backgroundColor: '#0047AB',
+        backgroundColor: '#7B61FF',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 2,
         borderWidth: 4,
         borderColor: '#fff',
-        shadowColor: '#0047AB',
+        shadowColor: '#7B61FF',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 4,
@@ -1078,15 +1091,15 @@ const styles = StyleSheet.create({
         paddingBottom: 25,
     },
     stepTitle: {
-        fontSize: 16,
+        fontSize: fontSize(18),
         fontWeight: 'bold',
-        color: '#0D1B3E',
+        color: '#2D1E4E',
         marginBottom: 4,
     },
     stepDescription: {
-        fontSize: 13,
+        fontSize: fontSize(15),
         color: '#64748B',
-        lineHeight: 18,
+        lineHeight: fontSize(22),
     },
     socialRow: {
         flexDirection: 'row',

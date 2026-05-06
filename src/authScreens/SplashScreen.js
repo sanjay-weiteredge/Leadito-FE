@@ -8,75 +8,70 @@ import {
     StatusBar,
     Dimensions,
 } from 'react-native';
+
 import Images from '../components/image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
 
 const { width, height } = Dimensions.get('window');
 
 const SplashScreen = ({ onFinish }) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;
-    const scaleAnim = useRef(new Animated.Value(0.9)).current;
+    const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
     useEffect(() => {
         Animated.parallel([
             Animated.timing(fadeAnim, {
                 toValue: 1,
-                duration: 1000,
+                duration: 1200,
                 useNativeDriver: true,
             }),
             Animated.spring(scaleAnim, {
                 toValue: 1,
-                tension: 10,
-                friction: 2,
+                tension: 12,
+                friction: 3,
                 useNativeDriver: true,
             }),
         ]).start(() => {
-            // Small delay before notifying parent to transition
             setTimeout(() => {
                 if (onFinish) onFinish();
-            }, 1500);
+            }, 1800);
         });
     }, [fadeAnim, scaleAnim, onFinish]);
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
+        <View style={styles.container}>
+            <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
 
             <Animated.View style={[
-                styles.logoContainer,
+                styles.imageContainer,
                 {
                     opacity: fadeAnim,
                     transform: [{ scale: scaleAnim }]
                 }
             ]}>
-                {/* Logo image imported via image.js */}
                 <Image
-                    source={Images.logo}
-                    style={styles.logoImage}
-                    resizeMode="contain"
+                    source={Images.onboarding}
+                    style={styles.fullScreenImage}
+                    resizeMode="cover"
                 />
-
             </Animated.View>
-        </SafeAreaView>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
-        alignItems: 'center',
-        justifyContent: 'center',
+        backgroundColor: '#FFFFFF',
+    },
+    imageContainer: {
+        flex: 1,
         width: width,
         height: height,
     },
-    logoContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    logoImage: {
-        width: width,
-        height: height * 0.4,
+    fullScreenImage: {
+        width: '100%',
+        height: '100%',
     },
 });
 

@@ -12,13 +12,16 @@ import {
     TextInput,
     ActivityIndicator,
     KeyboardAvoidingView,
-    Platform
+    Platform,
+    Share,
+    RefreshControl
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import ScreenWrapper from '../components/ScreenWrapper';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import userService from '../services/userService';
 import { makeCall, openWhatsApp, getContactNumberSync } from '../utils/contact';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +38,7 @@ const BusinessScreen = ({ navigation }) => {
         state: '',
         logoUrl: '',
     });
+    const [selectedImage, setSelectedImage] = useState(null);
 
     const fetchUserProfile = async () => {
         try {
@@ -49,9 +53,17 @@ const BusinessScreen = ({ navigation }) => {
         }
     };
 
+    const [refreshing, setRefreshing] = useState(false);
+
     useEffect(() => {
         fetchUserProfile();
     }, []);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await fetchUserProfile();
+        setRefreshing(false);
+    };
 
     const openEditModal = () => {
         if (user) {
@@ -65,13 +77,45 @@ const BusinessScreen = ({ navigation }) => {
                 logoUrl: user.logoUrl || '',
             });
             setEditModalVisible(true);
+            setSelectedImage(null);
+        }
+    };
+
+    const pickImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+
+        if (!result.canceled) {
+            setSelectedImage(result.assets[0]);
+            setEditForm({ ...editForm, logoUrl: result.assets[0].uri });
         }
     };
 
     const handleSaveProfile = async () => {
         setLoading(true);
         try {
-            const data = await userService.updateProfile(editForm);
+            const formData = new FormData();
+            formData.append('name', editForm.name);
+            formData.append('email', editForm.email);
+            formData.append('businessName', editForm.businessName);
+            formData.append('businessAddress', editForm.businessAddress);
+            formData.append('city', editForm.city);
+            formData.append('state', editForm.state);
+
+            if (selectedImage) {
+                const uri = selectedImage.uri;
+                const type = selectedImage.mimeType || 'image/jpeg';
+                const name = uri.split('/').pop();
+                formData.append('logo', { uri, type, name });
+            } else {
+                formData.append('logoUrl', editForm.logoUrl);
+            }
+
+            const data = await userService.updateProfile(formData);
             setUser(data.user);
             await AsyncStorage.setItem('userProfile', JSON.stringify(data.user));
             Alert.alert('Success', 'Profile updated successfully!');
@@ -91,7 +135,7 @@ const BusinessScreen = ({ navigation }) => {
             subtitle: 'View your current plan, status and validity',
             icon: 'card-account-details-outline',
             iconType: 'MaterialCommunityIcons',
-            color: '#3B82F6',
+            color: '#9333EA',
         },
         // ... (other options stay the same, but I'll add the onPress handler below)
         {
@@ -123,22 +167,49 @@ const BusinessScreen = ({ navigation }) => {
         );
     };
 
+    const handleShareApp = async () => {
+        try {
+            const result = await Share.share({
+                message: 'Transform your business with Leadito - The ultimate lead management and business growth tool. Manage leads, track performance, and grow your business today!\n\nDownload Leadito now: https://leadito.pages.dev/',
+                title: 'Share Leadito',
+            });
+            if (result.action === Share.sharedAction) {
+                if (result.activityType) {
+                    // shared with activity type of result.activityType
+                } else {
+                    // shared
+                }
+            } else if (result.action === Share.dismissedAction) {
+                // dismissed
+            }
+        } catch (error) {
+            Alert.alert('Error', error.message);
+        }
+    };
+
     const handleOptionPress = (id) => {
         if (id === 'logout') {
             handleLogout();
         } else if (id === 'support') {
-            const contactNumber = getContactNumberSync(user);
-            Alert.alert(
-                'Support',
-                'How would you like to contact us?',
-                [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'WhatsApp', onPress: () => openWhatsApp(contactNumber, "Hi, I need support with Leadito.") },
-                    { text: 'Call Support', onPress: () => makeCall(contactNumber) },
-                ]
-            );
+            navigation.navigate('Support');
         } else if (id === 'plan') {
-            navigation.navigate('Plans & Pricing');
+            navigation.navigate('PlanDetails');
+        } else if (id === 'performance') {
+            navigation.navigate('PerformanceSummary');
+        } else if (id === 'payment') {
+            navigation.navigate('PaymentInfo');
+        } else if (id === 'notifications') {
+            navigation.navigate('Notifications');
+        } else if (id === 'share') {
+            handleShareApp();
+        } else if (id === 'workprocess') {
+            navigation.navigate('WorkProcess');
+        } else if (id === 'privacy') {
+            navigation.navigate('PrivacyPolicy');
+        } else if (id === 'terms') {
+            navigation.navigate('Terms');
+        } else if (id === 'refund') {
+            navigation.navigate('RefundPolicy');
         } else {
             // Placeholder for other navigations
             console.log('Navigating to:', id);
@@ -173,14 +244,20 @@ const BusinessScreen = ({ navigation }) => {
     );
 
     return (
-        <ScreenWrapper statusBarColor="#2563EB">
+        <ScreenWrapper statusBarColor="#7B61FF" bottomSafe={false}>
             <View style={styles.container}>
                 {/* Header Section */}
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>Business</Text>
                 </View>
 
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    style={styles.content}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7B61FF']} tintColor="#7B61FF" />
+                    }
+                >
                     {/* Profile Card */}
                     <View style={styles.profileCard}>
                         <View style={styles.profileHeader}>
@@ -189,7 +266,7 @@ const BusinessScreen = ({ navigation }) => {
                                     {user?.logoUrl ? (
                                         <Image source={{ uri: user.logoUrl }} style={styles.businessLogo} resizeMode="cover" />
                                     ) : (
-                                        <MaterialCommunityIcons name="office-building" size={32} color="#2563EB" />
+                                        <MaterialCommunityIcons name="office-building" size={32} color="#7B61FF" />
                                     )}
                                 </View>
                             </View>
@@ -203,7 +280,7 @@ const BusinessScreen = ({ navigation }) => {
                                     </TouchableOpacity>
                                 </View>
                                 <View style={styles.infoRow}>
-                                    <Ionicons name="location" size={14} color="#2563EB" style={styles.infoIcon} />
+                                    <Ionicons name="location" size={14} color="#7B61FF" style={styles.infoIcon} />
                                     <Text style={styles.infoText} numberOfLines={1}>
                                         {user?.city ? `${user.city}${user.state ? `, ${user.state}` : ''}` : 'Location not set'}
                                     </Text>
@@ -223,7 +300,6 @@ const BusinessScreen = ({ navigation }) => {
                         </View>
                     </View>
 
-                    {/* Options List */}
                     <View style={styles.optionsList}>
                         {[
                             {
@@ -232,7 +308,7 @@ const BusinessScreen = ({ navigation }) => {
                                 subtitle: user?.isActive ? 'Active Plan' : 'Free Tier - Click to Upgrade',
                                 icon: 'card-account-details-outline',
                                 iconType: 'MaterialCommunityIcons',
-                                color: '#3B82F6',
+                                color: '#9333EA',
                             },
                             {
                                 id: 'performance',
@@ -275,12 +351,20 @@ const BusinessScreen = ({ navigation }) => {
                                 color: '#8B5CF6',
                             },
                             {
+                                id: 'workprocess',
+                                title: 'How It Works',
+                                subtitle: 'Understand our work process',
+                                icon: 'cog-outline',
+                                iconType: 'MaterialCommunityIcons',
+                                color: '#059669',
+                            },
+                            {
                                 id: 'privacy',
                                 title: 'Privacy Policy',
                                 subtitle: 'Read our privacy guidelines',
                                 icon: 'shield-lock-outline',
                                 iconType: 'MaterialCommunityIcons',
-                                color: '#64748B',
+                                color: '#0EA5E9',
                             },
                             {
                                 id: 'terms',
@@ -288,7 +372,15 @@ const BusinessScreen = ({ navigation }) => {
                                 subtitle: 'Review our terms of service',
                                 icon: 'document-text-outline',
                                 iconType: 'Ionicons',
-                                color: '#64748B',
+                                color: '#F59E0B',
+                            },
+                            {
+                                id: 'refund',
+                                title: 'Refund Policy',
+                                subtitle: 'View our refund conditions',
+                                icon: 'cash-outline',
+                                iconType: 'Ionicons',
+                                color: '#F43F5E',
                             },
                             {
                                 id: 'logout',
@@ -377,13 +469,20 @@ const BusinessScreen = ({ navigation }) => {
                                 </View>
                             </View>
 
-                            <Text style={styles.inputLabel}>Logo URL</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={editForm.logoUrl}
-                                onChangeText={(text) => setEditForm({ ...editForm, logoUrl: text })}
-                                placeholder="https://example.com/logo.png"
-                            />
+                            <Text style={styles.inputLabel}>Business Logo</Text>
+                            <TouchableOpacity style={styles.imagePickerButton} onPress={pickImage}>
+                                {editForm.logoUrl ? (
+                                    <Image source={{ uri: editForm.logoUrl }} style={styles.previewLogo} />
+                                ) : (
+                                    <View style={styles.placeholderLogo}>
+                                        <Ionicons name="camera" size={32} color="#94A3B8" />
+                                        <Text style={styles.placeholderText}>Select Logo</Text>
+                                    </View>
+                                )}
+                                <View style={styles.editBadge}>
+                                    <MaterialCommunityIcons name="pencil" size={16} color="#fff" />
+                                </View>
+                            </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={[styles.saveButton, loading && { opacity: 0.7 }]}
@@ -410,13 +509,13 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8FAFC',
     },
     header: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
         height: 70,
         paddingHorizontal: 20,
         paddingTop: 20,
     },
     headerTitle: {
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: 'bold',
         color: '#fff',
     },
@@ -427,7 +526,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         marginHorizontal: 16,
         borderRadius: 20,
-        padding: 20,
+        padding: 16,
         marginTop: 15,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
@@ -449,11 +548,11 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: '#EFF6FF',
+        backgroundColor: '#F3E8FF',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#DBEAFE',
+        borderColor: '#E9D5FF',
     },
     businessLogo: {
         width: 80,
@@ -470,16 +569,16 @@ const styles = StyleSheet.create({
         marginBottom: 6,
     },
     businessName: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
         flex: 1,
         marginRight: 10,
     },
     editText: {
-        fontSize: 12,
+        fontSize: 14,
         fontWeight: 'bold',
-        color: '#2563EB',
+        color: '#7B61FF',
     },
     infoRow: {
         flexDirection: 'row',
@@ -489,13 +588,13 @@ const styles = StyleSheet.create({
         marginRight: 6,
     },
     infoText: {
-        fontSize: 13,
+        fontSize: 15,
         color: '#64748B',
     },
     contactInfoRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingTop: 16,
+        flexDirection: 'column',
+        gap: 8,
+        paddingTop: 12,
         borderTopWidth: 1,
         borderTopColor: '#F1F5F9',
     },
@@ -505,7 +604,7 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     contactText: {
-        fontSize: 12,
+        fontSize: 14,
         color: '#475569',
         fontWeight: '500',
     },
@@ -518,19 +617,19 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#fff',
-        padding: 12,
-        borderRadius: 16,
-        marginBottom: 8,
+        padding: 10,
+        borderRadius: 14,
+        marginBottom: 6,
         borderWidth: 1,
         borderColor: '#F1F5F9',
     },
     iconBg: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
+        width: 38,
+        height: 38,
+        borderRadius: 10,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 14,
+        marginRight: 12,
     },
     optionTextContainer: {
         flex: 1,
@@ -538,11 +637,11 @@ const styles = StyleSheet.create({
     optionTitle: {
         fontSize: 15,
         fontWeight: '600',
-        color: '#1E293B',
-        marginBottom: 2,
+        color: '#2D1E4E',
+        marginBottom: 1,
     },
     optionSubtitle: {
-        fontSize: 12,
+        fontSize: 12.5,
         color: '#94A3B8',
     },
     footerSpacing: {
@@ -567,15 +666,15 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     modalTitle: {
-        fontSize: 20,
+        fontSize: 22,
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
     },
     modalScroll: {
         paddingBottom: 40,
     },
     inputLabel: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '600',
         color: '#475569',
         marginBottom: 8,
@@ -588,11 +687,11 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
-        fontSize: 15,
-        color: '#1E293B',
+        fontSize: 16,
+        color: '#2D1E4E',
     },
     saveButton: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: 'center',
@@ -603,6 +702,47 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: 'bold',
+    },
+    imagePickerButton: {
+        alignSelf: 'center',
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 2,
+        borderColor: '#E2E8F0',
+        borderStyle: 'dashed',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 10,
+        marginBottom: 20,
+        position: 'relative',
+    },
+    previewLogo: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 60,
+    },
+    placeholderLogo: {
+        alignItems: 'center',
+    },
+    placeholderText: {
+        fontSize: 12,
+        color: '#94A3B8',
+        marginTop: 4,
+    },
+    editBadge: {
+        position: 'absolute',
+        bottom: 5,
+        right: 5,
+        backgroundColor: '#7B61FF',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 3,
+        borderColor: '#fff',
     },
 });
 

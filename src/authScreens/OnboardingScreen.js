@@ -18,7 +18,11 @@ import Images from '../components/image';
 import { Ionicons } from '@expo/vector-icons';
 import authService from '../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert } from 'react-native';
+import { ActivityIndicator } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { useSubscription } from '../context/SubscriptionContext';
+import { showSweetAlert } from '../components/SweetAlert';
+import { fontSize } from '../utils/responsive';
 
 const EmailIcon = () => (
     <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -41,12 +45,7 @@ const StateIcon = () => (
     </Svg>
 );
 
-const LogoIcon = () => (
-    <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <Path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-        <Path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-    </Svg>
-);
+// LogoIcon removed from this screen
 
 const { width } = Dimensions.get('window');
 
@@ -92,7 +91,7 @@ const CityIcon = () => (
 );
 
 const InfoIcon = () => (
-    <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7B61FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <Circle cx="12" cy="12" r="10" />
         <Path d="M12 16v-4" />
         <Path d="M12 8h.01" />
@@ -107,8 +106,10 @@ const ArrowRightIcon = () => (
 );
 
 const OnboardingScreen = ({ navigation }) => {
+    const { checkSubscription } = useSubscription();
     const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(false);
+    const [errors, setErrors] = useState({});
     const [formData, setFormData] = useState({
         fullName: '',
         email: '',
@@ -120,6 +121,7 @@ const OnboardingScreen = ({ navigation }) => {
         state: '',
         logoUrl: '',
     });
+    const [selectedLogo, setSelectedLogo] = useState(null);
 
     React.useEffect(() => {
         const fetchUser = async () => {
@@ -134,39 +136,79 @@ const OnboardingScreen = ({ navigation }) => {
 
     const handleInput = (key, value) => {
         setFormData({ ...formData, [key]: value });
+        if (errors[key]) {
+            setErrors(prev => ({ ...prev, [key]: null }));
+        }
+    };
+
+    const pickLogo = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+
+        if (!result.canceled) {
+            setSelectedLogo(result.assets[0]);
+            setFormData({ ...formData, logoUrl: result.assets[0].uri });
+        }
     };
 
     const handleCompleteSetup = async () => {
-        const { fullName, email, businessName, businessType, businessAddress, city, state, logoUrl } = formData;
+        const { fullName, email, businessName, businessType, businessAddress, city, state } = formData;
 
-        if (!fullName || !businessName || !businessType || !city) {
-            Alert.alert('Required Fields', 'Please fill in Name, Business Name, Type and City.');
+        let newErrors = {};
+        if (!fullName?.trim()) newErrors.fullName = 'Full Name is required';
+
+        if (email?.trim() && !/^\S+@\S+\.\S+$/.test(email)) {
+            newErrors.email = 'Please enter a valid email address';
+        }
+
+        if (!businessName?.trim()) newErrors.businessName = 'Business Name is required';
+        if (!businessType?.trim()) newErrors.businessType = 'Business Type is required';
+        if (!city?.trim()) newErrors.city = 'City is required';
+
+        setErrors(newErrors);
+
+        if (Object.keys(newErrors).length > 0) {
             return;
         }
 
         setLoading(true);
         try {
-            const data = await authService.onboarding({
-                name: fullName,
-                email,
-                businessName,
-                businessType,
-                businessAddress,
-                city,
-                state,
-                logoUrl
-            });
+            const formDataToSubmit = new FormData();
+            formDataToSubmit.append('name', fullName);
+            formDataToSubmit.append('email', email);
+            formDataToSubmit.append('businessName', businessName);
+            formDataToSubmit.append('businessType', businessType);
+            formDataToSubmit.append('businessAddress', businessAddress);
+            formDataToSubmit.append('city', city);
+            formDataToSubmit.append('state', state);
+
+            if (selectedLogo) {
+                const uri = selectedLogo.uri;
+                const type = selectedLogo.mimeType || 'image/jpeg';
+                const name = uri.split('/').pop();
+                formDataToSubmit.append('logo', { uri, type, name });
+            }
+
+            const data = await authService.onboarding(formDataToSubmit);
 
             // Update stored token and profile with onboarded status
             await AsyncStorage.setItem('userToken', data.token);
             await AsyncStorage.setItem('userProfile', JSON.stringify(data.user));
 
-            Alert.alert('Success', 'Profile setup complete!', [
-                { text: 'Start Exploring', onPress: () => navigation.navigate('Main') }
-            ]);
+            // Refresh subscription status now that the token is updated.
+            await checkSubscription();
+
+            showSweetAlert('Success', 'Profile setup complete!', {
+                confirmText: 'Start Exploring',
+                onConfirm: () => navigation.navigate('Main')
+            });
         } catch (error) {
             console.error('Onboarding Error:', error);
-            Alert.alert('Error', error.response?.data?.message || 'Failed to complete setup. Please try again.');
+            showSweetAlert('Error', error.response?.data?.message || 'Failed to complete setup. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -192,8 +234,8 @@ const OnboardingScreen = ({ navigation }) => {
                     </View>
 
                     <View style={styles.formContainer}>
-                        <Text style={styles.inputLabel}>Full Name *</Text>
-                        <View style={styles.inputWrapper}>
+                        <Text style={styles.inputLabel}>Full Name*</Text>
+                        <View style={[styles.inputWrapper, errors.fullName && styles.inputError]}>
                             <UserIcon />
                             <TextInput
                                 style={styles.input}
@@ -203,9 +245,10 @@ const OnboardingScreen = ({ navigation }) => {
                                 placeholderTextColor="#94A3B8"
                             />
                         </View>
+                        {errors.fullName ? <Text style={styles.errorText}>{errors.fullName}</Text> : null}
 
                         <Text style={styles.inputLabel}>Email Address</Text>
-                        <View style={styles.inputWrapper}>
+                        <View style={[styles.inputWrapper, errors.email && styles.inputError]}>
                             <EmailIcon />
                             <TextInput
                                 style={styles.input}
@@ -214,8 +257,10 @@ const OnboardingScreen = ({ navigation }) => {
                                 onChangeText={(val) => handleInput('email', val)}
                                 placeholderTextColor="#94A3B8"
                                 keyboardType="email-address"
+                                autoCapitalize="none"
                             />
                         </View>
+                        {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
 
                         <Text style={styles.inputLabel}>Phone Number</Text>
                         <View style={[styles.inputWrapper, styles.disabledInput]}>
@@ -228,8 +273,8 @@ const OnboardingScreen = ({ navigation }) => {
                             />
                         </View>
 
-                        <Text style={styles.inputLabel}>Business Name *</Text>
-                        <View style={styles.inputWrapper}>
+                        <Text style={styles.inputLabel}>Business Name*</Text>
+                        <View style={[styles.inputWrapper, errors.businessName && styles.inputError]}>
                             <BusinessIcon />
                             <TextInput
                                 style={styles.input}
@@ -239,9 +284,10 @@ const OnboardingScreen = ({ navigation }) => {
                                 placeholderTextColor="#94A3B8"
                             />
                         </View>
+                        {errors.businessName ? <Text style={styles.errorText}>{errors.businessName}</Text> : null}
 
-                        <Text style={styles.inputLabel}>Business Type *</Text>
-                        <View style={styles.inputWrapper}>
+                        <Text style={styles.inputLabel}>Business Type*</Text>
+                        <View style={[styles.inputWrapper, errors.businessType && styles.inputError]}>
                             <TypeIcon />
                             <TextInput
                                 style={styles.input}
@@ -251,6 +297,7 @@ const OnboardingScreen = ({ navigation }) => {
                                 placeholderTextColor="#94A3B8"
                             />
                         </View>
+                        {errors.businessType ? <Text style={styles.errorText}>{errors.businessType}</Text> : null}
 
                         <Text style={styles.inputLabel}>Business Address</Text>
                         <View style={styles.inputWrapper}>
@@ -266,8 +313,8 @@ const OnboardingScreen = ({ navigation }) => {
 
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                             <View style={{ width: '48%' }}>
-                                <Text style={styles.inputLabel}>City *</Text>
-                                <View style={styles.inputWrapper}>
+                                <Text style={styles.inputLabel}>City*</Text>
+                                <View style={[styles.inputWrapper, errors.city && styles.inputError]}>
                                     <CityIcon />
                                     <TextInput
                                         style={styles.input}
@@ -277,11 +324,12 @@ const OnboardingScreen = ({ navigation }) => {
                                         placeholderTextColor="#94A3B8"
                                     />
                                 </View>
+                                {errors.city ? <Text style={styles.errorText}>{errors.city}</Text> : null}
                             </View>
 
                             <View style={{ width: '48%' }}>
                                 <Text style={styles.inputLabel}>State</Text>
-                                <View style={styles.inputWrapper}>
+                                <View style={[styles.inputWrapper, errors.state && styles.inputError]}>
                                     <StateIcon />
                                     <TextInput
                                         style={styles.input}
@@ -291,20 +339,10 @@ const OnboardingScreen = ({ navigation }) => {
                                         placeholderTextColor="#94A3B8"
                                     />
                                 </View>
+                                {errors.state ? <Text style={styles.errorText}>{errors.state}</Text> : null}
                             </View>
                         </View>
 
-                        <Text style={styles.inputLabel}>Logo URL</Text>
-                        <View style={styles.inputWrapper}>
-                            <LogoIcon />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="https://example.com/logo.png"
-                                value={formData.logoUrl}
-                                onChangeText={(val) => handleInput('logoUrl', val)}
-                                placeholderTextColor="#94A3B8"
-                            />
-                        </View>
                     </View>
 
                     <TouchableOpacity
@@ -379,10 +417,10 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     stepCompleted: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
     },
     stepActive: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
     },
     stepInactive: {
         backgroundColor: '#F1F5F9',
@@ -391,27 +429,27 @@ const styles = StyleSheet.create({
     },
     stepNumberActive: {
         color: '#FFFFFF',
-        fontSize: 12,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
     },
     stepNumberInactive: {
         color: '#94A3B8',
-        fontSize: 12,
+        fontSize: fontSize(12),
         fontWeight: 'bold',
     },
     stepText: {
-        fontSize: 10,
+        fontSize: fontSize(10),
         color: '#94A3B8',
         textAlign: 'center',
     },
     stepTextActive: {
-        color: '#2563EB',
+        color: '#7B61FF',
         fontWeight: 'bold',
     },
     stepLineActive: {
         height: 1,
         width: 40,
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
         marginBottom: 20,
     },
     stepLineInactive: {
@@ -429,13 +467,13 @@ const styles = StyleSheet.create({
         marginVertical: 10,
     },
     title: {
-        fontSize: 24,
+        fontSize: fontSize(24),
         fontWeight: 'bold',
-        color: '#1E293B',
+        color: '#2D1E4E',
         marginBottom: 8,
     },
     subtitle: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         color: '#64748B',
         textAlign: 'center',
     },
@@ -443,9 +481,9 @@ const styles = StyleSheet.create({
         marginTop: 4,
     },
     inputLabel: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: '600',
-        color: '#1E293B',
+        color: '#2D1E4E',
         marginTop: 20,
         marginBottom: 8,
     },
@@ -465,18 +503,28 @@ const styles = StyleSheet.create({
     input: {
         flex: 1,
         marginLeft: 12,
-        fontSize: 15,
+        fontSize: fontSize(15),
         color: '#1E293B',
+    },
+    inputError: {
+        borderColor: '#EF4444',
+        backgroundColor: '#FEF2F2',
+    },
+    errorText: {
+        color: '#EF4444',
+        fontSize: fontSize(12),
+        marginTop: 6,
+        marginLeft: 4,
     },
     dropdownText: {
         flex: 1,
         marginLeft: 12,
-        fontSize: 15,
+        fontSize: fontSize(15),
         color: '#94A3B8',
     },
     infoCard: {
         flexDirection: 'row',
-        backgroundColor: '#EFF6FF',
+        backgroundColor: '#F3E8FF',
         borderRadius: 12,
         padding: 16,
         marginTop: 30,
@@ -487,25 +535,25 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     infoTitle: {
-        fontSize: 14,
+        fontSize: fontSize(14),
         fontWeight: 'bold',
         color: '#1E293B',
         marginBottom: 4,
     },
     infoDescription: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         color: '#64748B',
         lineHeight: 18,
     },
     primaryButton: {
-        backgroundColor: '#2563EB',
+        backgroundColor: '#7B61FF',
         height: 56,
         borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 30,
-        shadowColor: '#2563EB',
+        shadowColor: '#7B61FF',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 8,
@@ -513,7 +561,7 @@ const styles = StyleSheet.create({
     },
     primaryButtonText: {
         color: '#FFFFFF',
-        fontSize: 16,
+        fontSize: fontSize(16),
         fontWeight: 'bold',
         marginRight: 12,
     },
@@ -525,10 +573,58 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
     },
     footerText: {
-        fontSize: 12,
+        fontSize: fontSize(12),
         color: '#64748B',
         textAlign: 'center',
         lineHeight: 18,
+    },
+    logoPickerContainer: {
+        width: '100%',
+        height: 160,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 2,
+        borderColor: '#E2E8F0',
+        borderStyle: 'dashed',
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 8,
+        position: 'relative',
+    },
+    logoPlaceholder: {
+        alignItems: 'center',
+    },
+    logoIconBg: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: '#F3E8FF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    logoPlaceholderText: {
+        fontSize: fontSize(14),
+        color: '#64748B',
+    },
+    logoPreview: {
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+    },
+    logoEditBadge: {
+        position: 'absolute',
+        bottom: 15,
+        right: '50%',
+        marginRight: -70,
+        backgroundColor: '#7B61FF',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#FFFFFF',
     },
 });
 
