@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, RefreshControl, Modal, StatusBar } from 'react-native';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons, Entypo } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video } from 'expo-av';
+import { Video, Audio } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
 import publicService from '../services/publicService';
 import GlobalHeader from '../components/GlobalHeader';
@@ -25,11 +25,25 @@ const HomeScreen = () => {
     const [loading, setLoading] = React.useState(true);
     const [user, setUser] = React.useState(null);
     const [refreshing, setRefreshing] = React.useState(false);
+    const [videoModalVisible, setVideoModalVisible] = React.useState(false);
 
     React.useEffect(() => {
+        setupAudio();
         fetchHomeContent();
         loadUser();
     }, []);
+
+    const setupAudio = async () => {
+        try {
+            await Audio.setAudioModeAsync({
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                shouldRouteThroughEarpieceAndroid: false,
+            });
+        } catch (error) {
+            console.log('Audio mode error:', error);
+        }
+    };
 
     const onRefresh = React.useCallback(async () => {
         setRefreshing(true);
@@ -129,41 +143,58 @@ const HomeScreen = () => {
 
                 {homeVideo && (
                     <View style={styles.section}>
-                        <View style={styles.videoCard}>
-                            <TouchableOpacity
-                                activeOpacity={0.9}
-                                onPress={() => {
-                                    if (status.isPlaying) {
-                                        video.current.pauseAsync();
-                                    } else {
-                                        video.current.playAsync();
-                                    }
-                                }}
-                                style={styles.videoThumbnail}
-                            >
+                        {/* Fullscreen Video Modal */}
+                        <Modal
+                            visible={videoModalVisible}
+                            animationType="fade"
+                            statusBarTranslucent
+                            onRequestClose={() => {
+                                setVideoModalVisible(false);
+                                if (video.current) video.current.pauseAsync();
+                            }}
+                        >
+                            <StatusBar hidden />
+                            <View style={styles.videoModal}>
                                 <Video
                                     ref={video}
-                                    style={styles.video}
+                                    style={styles.fullscreenVideo}
                                     source={{ uri: homeVideo.videoUrl }}
-                                    useNativeControls={false}
-                                    resizeMode="cover"
+                                    useNativeControls
+                                    resizeMode="contain"
                                     isLooping
-                                    shouldPlay={false}
-                                    onPlaybackStatusUpdate={status => setStatus(() => status)}
+                                    shouldPlay={videoModalVisible}
+                                    onPlaybackStatusUpdate={s => setStatus(() => s)}
                                     onError={(error) => console.log('Video Error:', error)}
                                 />
-                                {!status.isPlaying && (
-                                    <View style={styles.thumbnailOverlay}>
-                                        <Image
-                                            source={{ uri: homeVideo.thumbnailUrl }}
-                                            style={styles.thumbnailImage}
-                                            resizeMode="cover"
-                                        />
-                                        <View style={styles.playButtonContainer}>
-                                            <Ionicons name="play" size={24} color="#fff" />
-                                        </View>
+                                <TouchableOpacity
+                                    style={styles.videoCloseButton}
+                                    onPress={() => {
+                                        setVideoModalVisible(false);
+                                        if (video.current) video.current.pauseAsync();
+                                    }}
+                                >
+                                    <Ionicons name="close" size={26} color="#fff" />
+                                </TouchableOpacity>
+                            </View>
+                        </Modal>
+
+                        {/* Thumbnail Card */}
+                        <View style={styles.videoCard}>
+                            <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => setVideoModalVisible(true)}
+                                style={styles.videoThumbnail}
+                            >
+                                <Image
+                                    source={{ uri: homeVideo.thumbnailUrl }}
+                                    style={styles.thumbnailImage}
+                                    resizeMode="cover"
+                                />
+                                <View style={styles.thumbnailOverlay}>
+                                    <View style={styles.playButtonContainer}>
+                                        <Ionicons name="play" size={24} color="#fff" />
                                     </View>
-                                )}
+                                </View>
                             </TouchableOpacity>
                             <View style={styles.videoInfo}>
                                 <Text style={styles.sectionTitle}>{homeVideo.title || "Watch Demo Video"}</Text>
@@ -340,11 +371,19 @@ const HomeScreen = () => {
                             <View style={[styles.serviceIconContainer, {
                                 backgroundColor: index % 3 === 0 ? '#F4E8FC' : index % 3 === 1 ? '#ECFDF5' : '#F5F3FF'
                             }]}>
-                                <Ionicons
-                                    name={index % 3 === 0 ? "megaphone-outline" : index % 3 === 1 ? "people-outline" : "stats-chart-outline"}
-                                    size={24}
-                                    color={index % 3 === 0 ? '#9333EA' : index % 3 === 1 ? '#10B981' : '#8B5CF6'}
-                                />
+                                {service.iconUrl ? (
+                                    <Image
+                                        source={{ uri: service.iconUrl }}
+                                        style={{ width: 26, height: 26 }}
+                                        resizeMode="contain"
+                                    />
+                                ) : (
+                                    <Ionicons
+                                        name={index % 3 === 0 ? "megaphone-outline" : index % 3 === 1 ? "people-outline" : "stats-chart-outline"}
+                                        size={24}
+                                        color={index % 3 === 0 ? '#9333EA' : index % 3 === 1 ? '#10B981' : '#8B5CF6'}
+                                    />
+                                )}
                             </View>
                             <View style={styles.serviceInfo}>
                                 <Text style={styles.serviceTitle}>{service.title}</Text>
@@ -433,30 +472,30 @@ const HomeScreen = () => {
                             </View>
                             <Text style={styles.contactItemText}>Call {getContactInfo(user).TEAM.split(' ')[0]}</Text>
                         </TouchableOpacity>
-                        <View style={styles.contactItem}>
+                        {/* <View style={styles.contactItem}>
                             <View style={styles.contactIconBg}>
                                 <Ionicons name="mail" size={20} color="#1D6AF2" />
                             </View>
                             <Text style={styles.contactItemText}>hello@leaditoai.com</Text>
-                        </View>
-                        <View style={styles.contactItem}>
+                        </View> */}
+                        {/* <View style={styles.contactItem}>
                             <View style={styles.contactIconBg}>
                                 <Ionicons name="globe" size={20} color="#1D6AF2" />
                             </View>
                             <Text style={styles.contactItemText}>www.leaditoai.com</Text>
-                        </View>
+                        </View> */}
                         <View style={styles.contactItem}>
                             <View style={styles.contactIconBg}>
                                 <Ionicons name="location" size={20} color="#1D6AF2" />
                             </View>
-                            <Text style={styles.contactItemText}>Bangalore, India</Text>
+                            <Text style={styles.contactItemText}>Hyderabad, India</Text>
                         </View>
                     </View>
 
                     <View style={styles.socialRow}>
-                        <TouchableOpacity>
+                        {/* <TouchableOpacity>
                             <Entypo name="facebook-with-circle" size={36} color="#1877F2" />
-                        </TouchableOpacity>
+                        </TouchableOpacity> */}
                         <TouchableOpacity>
                             <LinearGradient
                                 colors={['#F58529', '#DD2A7B', '#8134AF', '#515BD4']}
@@ -465,12 +504,12 @@ const HomeScreen = () => {
                                 <Ionicons name="logo-instagram" size={20} color="#fff" />
                             </LinearGradient>
                         </TouchableOpacity>
-                        <TouchableOpacity>
+                        {/* <TouchableOpacity>
                             <Entypo name="linkedin-with-circle" size={36} color="#0A66C2" />
                         </TouchableOpacity>
                         <TouchableOpacity>
                             <Entypo name="youtube-with-circle" size={36} color="#FF0000" />
-                        </TouchableOpacity>
+                        </TouchableOpacity> */}
                     </View>
                 </View>
 
@@ -640,25 +679,45 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     videoThumbnail: {
-        height: verticalScale(140),
+        height: verticalScale(200),
         width: '100%',
         backgroundColor: '#000',
-        position: 'relative',
-    },
-    video: {
-        width: '100%',
-        height: '100%',
+        overflow: 'hidden',
     },
     thumbnailOverlay: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.25)',
     },
     thumbnailImage: {
-        ...StyleSheet.absoluteFillObject,
         width: '100%',
         height: '100%',
-        opacity: 0.8,
+    },
+    /* Fullscreen modal */
+    videoModal: {
+        flex: 1,
+        backgroundColor: '#000',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    fullscreenVideo: {
+        width: '100%',
+        height: '100%',
+    },
+    videoCloseButton: {
+        position: 'absolute',
+        top: 50,
+        right: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.5)',
     },
     playButtonContainer: {
         width: 36,

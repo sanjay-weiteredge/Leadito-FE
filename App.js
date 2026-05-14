@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -25,6 +25,7 @@ import RefundPolicyScreen from './src/mainScreen/RefundPolicyScreen';
 import { SubscriptionProvider } from './src/context/SubscriptionContext';
 import { SweetAlertProvider } from './src/components/SweetAlert';
 import CustomAlert from './src/utils/CustomAlert';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { navigationRef } from './src/services/navigationService';
 
@@ -39,6 +40,34 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
   const [isShowSplash, setIsShowSplash] = useState(true);
+  const [initialRouteName, setInitialRouteName] = useState('Intro');
+
+  useEffect(() => {
+    const checkLoginState = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        const profileStr = await AsyncStorage.getItem('userProfile');
+
+        if (token) {
+          if (profileStr) {
+            const profile = JSON.parse(profileStr);
+            if (profile.isOnboarded) {
+              setInitialRouteName('Main');
+            } else {
+              setInitialRouteName('Onboarding');
+            }
+          } else {
+            // Token exists but no profile? Might need onboarding or login refresh
+            setInitialRouteName('Onboarding');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking login state:', error);
+      }
+    };
+
+    checkLoginState();
+  }, []);
 
   return (
     <SafeAreaProvider>
@@ -48,7 +77,10 @@ export default function App() {
           <SplashScreen onFinish={() => setIsShowSplash(false)} />
         ) : (
           <NavigationContainer ref={navigationRef}>
-            <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Navigator
+              initialRouteName={initialRouteName}
+              screenOptions={{ headerShown: false }}
+            >
               <Stack.Screen name="Intro" component={IntroSlider} />
               <Stack.Screen name="Login" component={LoginScreen} />
               <Stack.Screen name="Otp" component={OtpScreen} />

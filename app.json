@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./src/assessts/Leadito Logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -21,7 +21,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.thelaundryguyz.leadito",
+      "package": "com.leaditoai.app",
+      "googleServicesFile": "./google-services.json",
       "usesCleartextTraffic": true
     },
     "web": {
@@ -29,8 +30,12 @@
     },
     "extra": {
       "eas": {
-        "projectId": "fc31ae1b-3cf0-476a-88ed-40bdf4ff6c5b"
+        "projectId": "bc94e901-b1cc-4946-a400-47e0e336399b"
       }
-    }
+    },
+    "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
+    ]
   }
 }

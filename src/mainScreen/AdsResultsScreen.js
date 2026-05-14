@@ -53,8 +53,8 @@ const AdsResultsScreen = () => {
     const fetchResults = async () => {
         setLoading(true);
         try {
-            // Map 'Meta' UI selection to 'all' platform in DB
-            const apiPlatform = platform === 'Meta' ? 'all' : platform.toLowerCase();
+            // Map 'Meta' UI selection to 'meta' platform in DB
+            const apiPlatform = platform === 'Meta' ? 'meta' : platform.toLowerCase();
 
             const res = await adsService.getAdsResults({
                 platform: apiPlatform
@@ -220,30 +220,15 @@ const AdsResultsScreen = () => {
                         </View>
                     </View>
 
-                    {/* Platform Selector */}
-                    <Text style={styles.platformLabel}>From the Leads</Text>
-                    <View style={styles.platformTabs}>
-                        <TouchableOpacity
-                            onPress={() => setPlatform('Facebook')}
-                            style={[styles.platformBtn, platform === 'Facebook' && styles.platformBtnActive]}
-                        >
-                            <FontAwesome5 name="facebook" size={16} color={platform === 'Facebook' ? '#1877F2' : '#64748B'} />
-                            <Text style={[styles.platformText, platform === 'Facebook' && styles.platformTextActive]}>Facebook</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={() => setPlatform('Instagram')}
-                            style={[styles.platformBtn, platform === 'Instagram' && styles.platformBtnActive]}
-                        >
-                            <FontAwesome5 name="instagram" size={16} color={platform === 'Instagram' ? '#E4405F' : '#64748B'} />
-                            <Text style={[styles.platformText, platform === 'Instagram' && styles.platformTextActive]}>Instagram</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={() => setPlatform('Meta')}
-                            style={[styles.platformBtn, platform === 'Meta' && styles.platformBtnActive]}
-                        >
-                            <MaterialCommunityIcons name="infinity" size={20} color={platform === 'Meta' ? '#0668E1' : '#64748B'} />
-                            <Text style={[styles.platformText, platform === 'Meta' && styles.platformTextActive]}>Meta Ads</Text>
-                        </TouchableOpacity>
+                    {/* Platform Selector - Simplified to One line */}
+                    <View style={styles.singlePlatformContainer}>
+                        <View style={styles.singlePlatformIconBox}>
+                            <MaterialCommunityIcons name="infinity" size={24} color="#0668E1" />
+                        </View>
+                        <View>
+                            <Text style={styles.singlePlatformTitle}>Facebook & Instagram Ads ( Meta Ads )</Text>
+                            {/* <Text style={styles.singlePlatformSub}>Facebook & Instagram (Combined View)</Text> */}
+                        </View>
                     </View>
 
                     {/* Hierarchical Filter System */}
@@ -287,48 +272,48 @@ const AdsResultsScreen = () => {
                             styles.statusBarContainer,
                             {
                                 backgroundColor:
-                                    reportData.campaignStatus === 'issue' ? '#FEF2F2' :
-                                        reportData.campaignStatus === 'active' ? '#ECFDF5' :
-                                            reportData.campaignStatus === 'published' ? '#F4E8FC' :
-                                                reportData.campaignStatus === 'budget_low' ? '#FFF7ED' : '#F8FAFC',
+                                    (reportData.campaignStatus === 'issue' || reportData.campaignStatus === 'Issue ⚠️') ? '#FEF2F2' :
+                                        (reportData.campaignStatus === 'active' || reportData.campaignStatus === 'Active ✅') ? '#ECFDF5' :
+                                            (reportData.campaignStatus === 'published' || reportData.campaignStatus === 'Published 🚀') ? '#EFF6FF' :
+                                                (reportData.campaignStatus === 'budget_low' || reportData.campaignStatus === 'Budget Low ⚠️') ? '#FFF7ED' : '#F8FAFC',
                                 borderColor:
-                                    reportData.campaignStatus === 'issue' ? '#FEE2E2' :
-                                        reportData.campaignStatus === 'active' ? '#D1FAE5' :
-                                            reportData.campaignStatus === 'published' ? '#DBEAFE' :
-                                                reportData.campaignStatus === 'budget_low' ? '#FFEDD5' : '#F1F5F9',
+                                    (reportData.campaignStatus === 'issue' || reportData.campaignStatus === 'Issue ⚠️') ? '#FEE2E2' :
+                                        (reportData.campaignStatus === 'active' || reportData.campaignStatus === 'Active ✅') ? '#D1FAE5' :
+                                            (reportData.campaignStatus === 'published' || reportData.campaignStatus === 'Published 🚀') ? '#DBEAFE' :
+                                                (reportData.campaignStatus === 'budget_low' || reportData.campaignStatus === 'Budget Low ⚠️') ? '#FFEDD5' : '#F1F5F9',
                             }
                         ]}>
                             <View style={styles.statusMain}>
                                 <Ionicons
                                     name={
-                                        reportData.campaignStatus === 'issue' ? 'warning' :
-                                            reportData.campaignStatus === 'active' ? 'checkmark-circle' :
-                                                reportData.campaignStatus === 'budget_low' ? 'alert-circle' :
-                                                    reportData.campaignStatus === 'paused' ? 'pause-circle' : 'rocket'
+                                        (reportData.campaignStatus === 'issue' || reportData.campaignStatus === 'Issue ⚠️') ? 'warning' :
+                                            (reportData.campaignStatus === 'active' || reportData.campaignStatus === 'Active ✅') ? 'checkmark-circle' :
+                                                (reportData.campaignStatus === 'budget_low' || reportData.campaignStatus === 'Budget Low ⚠️') ? 'alert-circle' :
+                                                    (reportData.campaignStatus === 'paused' || reportData.campaignStatus === 'Campaign Paused ⏸️') ? 'pause-circle' : 'rocket'
                                     }
                                     size={20}
                                     color={
-                                        reportData.campaignStatus === 'issue' ? '#EF4444' :
-                                            reportData.campaignStatus === 'active' ? '#10B981' :
-                                                reportData.campaignStatus === 'budget_low' ? '#F97316' :
-                                                    reportData.campaignStatus === 'paused' ? '#64748B' : '#7B61FF'
+                                        (reportData.campaignStatus === 'issue' || reportData.campaignStatus === 'Issue ⚠️') ? '#EF4444' :
+                                            (reportData.campaignStatus === 'active' || reportData.campaignStatus === 'Active ✅') ? '#10B981' :
+                                                (reportData.campaignStatus === 'budget_low' || reportData.campaignStatus === 'Budget Low ⚠️') ? '#F97316' :
+                                                    (reportData.campaignStatus === 'paused' || reportData.campaignStatus === 'Campaign Paused ⏸️') ? '#64748B' : '#3B82F6'
                                     }
                                 />
                                 <Text style={[
                                     styles.statusMainTitle,
                                     {
                                         color:
-                                            reportData.campaignStatus === 'issue' ? '#991B1B' :
-                                                reportData.campaignStatus === 'active' ? '#065F46' :
-                                                    reportData.campaignStatus === 'published' ? '#1E40AF' :
-                                                        reportData.campaignStatus === 'budget_low' ? '#9A3412' : '#334155'
+                                            (reportData.campaignStatus === 'issue' || reportData.campaignStatus === 'Issue ⚠️') ? '#991B1B' :
+                                                (reportData.campaignStatus === 'active' || reportData.campaignStatus === 'Active ✅') ? '#065F46' :
+                                                    (reportData.campaignStatus === 'published' || reportData.campaignStatus === 'Published 🚀') ? '#1E40AF' :
+                                                        (reportData.campaignStatus === 'budget_low' || reportData.campaignStatus === 'Budget Low ⚠️') ? '#9A3412' : '#334155'
                                     }
                                 ]}>
                                     {
-                                        reportData.campaignStatus === 'issue' ? 'Action Needed' :
-                                            reportData.campaignStatus === 'active' ? 'Active & Healthy' :
-                                                reportData.campaignStatus === 'budget_low' ? 'Budget is Low' :
-                                                    reportData.campaignStatus === 'paused' ? 'Campaign Paused' : 'Successfully Published'
+                                        (reportData.campaignStatus === 'issue' || reportData.campaignStatus === 'Issue') ? 'Issue' :
+                                            (reportData.campaignStatus === 'active' || reportData.campaignStatus === 'Active') ? 'Active' :
+                                                (reportData.campaignStatus === 'budget_low' || reportData.campaignStatus === 'Budget Low') ? 'Budget Low' :
+                                                    (reportData.campaignStatus === 'paused' || reportData.campaignStatus === 'Campaign Paused') ? 'Campaign Paused' : 'Published'
                                     }
                                 </Text>
                             </View>
@@ -534,41 +519,40 @@ const styles = StyleSheet.create({
     headerToggleTextActive: {
         color: '#fff',
     },
-    platformTabs: {
-        flexDirection: 'row',
-        gap: 12,
-        marginBottom: 20,
-    },
-    platformBtn: {
-        flex: 1,
+    singlePlatformContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        borderRadius: 12,
+        backgroundColor: '#F8FAFC',
+        padding: 16,
+        borderRadius: 20,
+        marginBottom: 20,
         borderWidth: 1,
         borderColor: '#E2E8F0',
+        gap: 15,
+    },
+    singlePlatformIconBox: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
         backgroundColor: '#fff',
-        gap: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+        elevation: 1,
     },
-    platformBtnActive: {
-        borderColor: '#7B61FF',
-        backgroundColor: '#F3E8FF',
-    },
-    platformText: {
+    singlePlatformTitle: {
         fontSize: 14,
-        fontWeight: '700',
-        color: '#64748B',
-    },
-    platformTextActive: {
-        color: '#0F172A',
-    },
-    platformLabel: {
-        fontSize: 12,
         fontWeight: 'bold',
+        color: '#2D1E4E',
+    },
+    singlePlatformSub: {
+        fontSize: 12,
         color: '#64748B',
-        marginBottom: 10,
-        marginLeft: 4,
+        fontWeight: '600',
+        marginTop: 2,
     },
     filterCard: {
         backgroundColor: '#fff',

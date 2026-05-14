@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -16,8 +16,9 @@ import {
     Linking,
     RefreshControl
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
-import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons, Feather, Entypo } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import ScreenWrapper from '../components/ScreenWrapper';
 import leadService from '../services/leadService';
@@ -46,6 +47,26 @@ const initialStats = Object.keys(STATUS_MAP).map(key => ({
     count: 0
 }));
 
+const DEMO_LEADS = [
+    { id: 'd1', name: 'Rahul Sharma', phone: '987XXXXXX1', source: 'Meta Ads', status: 'new', createdAt: new Date().toISOString(), notesCount: 0 },
+    { id: 'd2', name: 'Priya Patel', phone: '912XXXXXX2', source: 'Instagram', status: 'interested', createdAt: new Date(Date.now() - 86400000).toISOString(), notesCount: 1 },
+    { id: 'd3', name: 'Ankit Verma', phone: '887XXXXXX3', source: 'Manual', status: 'follow_up', followUpDate: new Date(Date.now() + 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(), notesCount: 2 },
+    { id: 'd4', name: 'Suresh Kumar', phone: '776XXXXXX4', source: 'Facebook', status: 'appointment_booked', createdAt: new Date(Date.now() - 259200000).toISOString(), notesCount: 1 },
+    { id: 'd5', name: 'Meena Iyer', phone: '998XXXXXX5', source: 'Meta Ads', status: 'closed', createdAt: new Date(Date.now() - 345600000).toISOString(), notesCount: 3 },
+];
+
+const DEMO_STATS = [
+    { id: 'all', label: 'Total Leads', color: '#2D1E4E', count: 5 },
+    { id: 'ratio', label: 'Conversion Ratio %', color: '#7B61FF', count: '20.0%', isRatio: true },
+    { id: 'new', label: 'New', color: '#7B61FF', count: 1 },
+    { id: 'not_answered', label: 'Not Answered', color: '#F59E0B', count: 0 },
+    { id: 'interested', label: 'Interested', color: '#10B981', count: 1 },
+    { id: 'not_interested', label: 'Not Interested', color: '#EF4444', count: 0 },
+    { id: 'follow_up', label: 'Follow-up', color: '#9F7AEA', count: 1 },
+    { id: 'appointment_booked', label: 'Appointments Booked', color: '#7B61FF', count: 1 },
+    { id: 'closed', label: 'Closed', color: '#64748B', count: 1 },
+];
+
 const LeadsScreen = ({ navigation }) => {
     const searchInputRef = useRef(null);
     const [search, setSearch] = useState('');
@@ -61,6 +82,7 @@ const LeadsScreen = ({ navigation }) => {
     const [page, setPage] = useState(1);
     const [refreshing, setRefreshing] = useState(false);
     const [pagination, setPagination] = useState({ totalPages: 1, totalLeads: 0 });
+    const [selectedStatus, setSelectedStatus] = useState('all');
 
     // Modal States
     const [addModalVisible, setAddModalVisible] = useState(false);
@@ -98,7 +120,15 @@ const LeadsScreen = ({ navigation }) => {
     const [editingNoteId, setEditingNoteId] = useState(null);
     const [editingNoteText, setEditingNoteText] = useState('');
 
-    const { isActive } = useSubscription();
+    const { isActive, checkSubscription } = useSubscription();
+
+    // Force subscription refresh when screen comes into focus
+    // This solves the issue of needing a logout after admin approval.
+    useFocusEffect(
+        useCallback(() => {
+            checkSubscription();
+        }, [])
+    );
 
     const loadUser = async () => {
         try {
@@ -120,6 +150,7 @@ const LeadsScreen = ({ navigation }) => {
     const clearFilters = () => {
         setSearch('');
         setActiveTab('Daily');
+        setSelectedStatus('all');
         setCustomRange({ startDate: '', endDate: '' });
         setMarkedDates({});
         setPage(1);
@@ -195,11 +226,14 @@ const LeadsScreen = ({ navigation }) => {
             const data = await leadService.listLeads({
                 search,
                 filter: activeTab,
+                status: selectedStatus !== 'all' ? selectedStatus : undefined,
                 startDate: customRange.startDate,
                 endDate: customRange.endDate,
                 page: pageNum,
                 limit: 5
             });
+
+            // If the server returns success, we are definitely paid
             setLeads(data.leads || []);
             if (data.pagination) {
                 setPagination(data.pagination);
@@ -229,8 +263,11 @@ const LeadsScreen = ({ navigation }) => {
             }
         } catch (error) {
             console.error('Fetch leads error:', error);
-            if (error.response?.status === 403) {
-                Alert.alert('Paid Feature', 'You need an active subscription to access and manage your leads.');
+            // Fallback to demo data only if receiving a 403 (unpaid)
+            if (error.response && error.response.status === 403) {
+                setLeads(DEMO_LEADS);
+                setStats(DEMO_STATS);
+                setPagination({ totalPages: 1, totalLeads: 5 });
             }
         } finally {
             setLoading(false);
@@ -239,13 +276,12 @@ const LeadsScreen = ({ navigation }) => {
 
     // Automatically apply search filters with debounce
     useEffect(() => {
-        if (!isActive) return;
         const delayDebounceFn = setTimeout(() => {
             fetchLeads(1);
         }, 500);
 
         return () => clearTimeout(delayDebounceFn);
-    }, [search, activeTab, customRange.startDate, customRange.endDate, isActive]);
+    }, [search, activeTab, customRange.startDate, customRange.endDate, selectedStatus, isPaid]);
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -268,11 +304,10 @@ const LeadsScreen = ({ navigation }) => {
         const errors = {};
         if (!newLead.name?.trim()) errors.name = 'Name is required';
 
-        // Clean phone for validation
         const cleanPhone = newLead.phone?.replace(/[^\d]/g, '') || '';
         if (!newLead.phone?.trim()) {
             errors.phone = 'Phone number is required';
-        } else if (cleanPhone.length < 10) {
+        } else if (cleanPhone.length !== 10) {
             errors.phone = 'Please enter a valid 10-digit number';
         }
 
@@ -299,6 +334,10 @@ const LeadsScreen = ({ navigation }) => {
     };
 
     const openEditLead = async (lead) => {
+        if (!isPaid) {
+            Alert.alert('Premium Feature', 'Upgrade to a paid plan to manage follow-up notes, update statuses, and track lead history.');
+            return;
+        }
         setActiveLead(lead);
         setEditForm({
             status: lead.status || 'new',
@@ -443,6 +482,10 @@ const LeadsScreen = ({ navigation }) => {
     };
 
     const handleCallLead = (phone) => {
+        if (!isPaid) {
+            Alert.alert('Premium Feature', 'Unlock call tracking and click-to-dial features by upgrading to a paid plan.');
+            return;
+        }
         if (!phone) {
             Alert.alert('Error', 'Phone number not available');
             return;
@@ -473,7 +516,7 @@ const LeadsScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.leadInfo}>
                         <View style={styles.leadNameRow}>
-                            <Text style={styles.leadName}>{lead.name}</Text>
+                            <Text style={styles.leadName} numberOfLines={1}>{lead.name}</Text>
                             <View style={[styles.statusBadge, { backgroundColor: color + '20' }]}>
                                 <Text style={[styles.statusText, { color: color }]}>{displayStatus}</Text>
                             </View>
@@ -502,7 +545,11 @@ const LeadsScreen = ({ navigation }) => {
                         <Text style={styles.timeText}>{new Date(lead.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short' })}</Text>
                     </View>
 
-                    <View style={styles.leadStatsRow}>
+                    <TouchableOpacity
+                        style={styles.leadStatsRow}
+                        onPress={() => openEditLead(lead)}
+                        activeOpacity={0.7}
+                    >
                         <View style={styles.statMiniBadge}>
                             <Feather name="message-square" size={12} color="#7B61FF" />
                             <Text style={styles.statMiniText}>{lead.notesCount || 0} {lead.notesCount == 1 ? 'Follow-up' : 'Follow-ups'}</Text>
@@ -514,7 +561,7 @@ const LeadsScreen = ({ navigation }) => {
                                 <Text style={[styles.statMiniText, { color: '#D97706' }]}>Next: {new Date(lead.followUpDate).toLocaleDateString([], { day: 'numeric', month: 'short' })}</Text>
                             </View>
                         )}
-                    </View>
+                    </TouchableOpacity>
                 </View>
             </View>
         );
@@ -572,28 +619,51 @@ const LeadsScreen = ({ navigation }) => {
                     </View>
 
                     {/* Stats Horizontal Scroll */}
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer} contentContainerStyle={{ paddingRight: 20 }}>
                         {stats.map((stat, index) => (
-                            <View key={index} style={styles.statCard}>
+                            <TouchableOpacity
+                                key={index}
+                                style={[
+                                    styles.statCard,
+                                    selectedStatus === stat.id && styles.activeStatCard,
+                                    stat.isRatio && { opacity: 0.8 } // Ratio card often shouldn't be a filter, but let's see
+                                ]}
+                                onPress={() => {
+                                    if (!stat.isRatio) {
+                                        setSelectedStatus(stat.id);
+                                        setPage(1); // Reset page on filter change
+                                    }
+                                }}
+                                activeOpacity={stat.isRatio ? 1 : 0.7}
+                            >
                                 <View style={styles.statLabelRow}>
-                                    <View style={[styles.statDot, { backgroundColor: isActive ? stat.color : '#CBD5E1' }]} />
+                                    <View style={[styles.statDot, { backgroundColor: stat.color }]} />
                                     <Text style={styles.statLabel}>{stat.label}</Text>
                                 </View>
-                                <Text style={styles.statCount}>{isActive ? stat.count : '—'}</Text>
-                            </View>
+                                <Text style={styles.statCount}>{stat.count}</Text>
+                                {selectedStatus === stat.id && !stat.isRatio && (
+                                    <View style={[styles.activeStatIndicator, { backgroundColor: stat.color }]} />
+                                )}
+                            </TouchableOpacity>
                         ))}
                     </ScrollView>
 
                     {/* Search Bar */}
-                    <View style={[styles.searchBarContainer, !isActive && { opacity: 0.6 }]}>
+                    <View style={styles.searchBarContainer}>
                         <Feather name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
                         <TextInput
                             ref={searchInputRef}
                             style={styles.searchInput}
-                            placeholder={isActive ? "Search by name or phone number" : "Upgrade to unlock search"}
+                            placeholder="Search by name or phone number"
+                            placeholderTextColor="#94A3B8"
                             value={search}
                             onChangeText={setSearch}
-                            editable={isActive}
+                            onFocus={() => {
+                                if (!isPaid) {
+                                    searchInputRef.current?.blur();
+                                    Alert.alert('Premium Feature', 'Upgrade to a paid plan to search through your leads and apply advanced filters.');
+                                }
+                            }}
                         />
                     </View>
 
@@ -641,10 +711,7 @@ const LeadsScreen = ({ navigation }) => {
                             <ActivityIndicator size="large" color="#7405CB" />
                         </View>
                     ) : (
-                        <SubscriptionGuard
-                            message="Leads Locked"
-                            subMessage="Upgrade to manage your leads, track follow-ups, and see detailed lead information."
-                        >
+                        <View>
                             {leads.length > 0 ? (
                                 <View style={styles.leadsList}>
                                     {leads.map(renderLeadCard)}
@@ -713,7 +780,7 @@ const LeadsScreen = ({ navigation }) => {
 
                                 </View>
                             )}
-                        </SubscriptionGuard>
+                        </View>
                     )}
 
                     {leads.length > 0 && (
@@ -805,11 +872,15 @@ const LeadsScreen = ({ navigation }) => {
                                 style={[styles.input, formErrors.phone && styles.inputError]}
                                 value={newLead.phone}
                                 onChangeText={(text) => {
-                                    setNewLead({ ...newLead, phone: text });
-                                    if (formErrors.phone) setFormErrors({ ...formErrors, phone: null });
+                                    const cleaned = text.replace(/[^\d]/g, '');
+                                    if (cleaned.length <= 10) {
+                                        setNewLead({ ...newLead, phone: cleaned });
+                                        if (formErrors.phone) setFormErrors({ ...formErrors, phone: null });
+                                    }
                                 }}
-                                placeholder="+91 XXXXX XXXXX"
-                                keyboardType="phone-pad"
+                                placeholder="10-digit phone number"
+                                keyboardType="number-pad"
+                                maxLength={10}
                             />
                             {formErrors.phone && <Text style={styles.errorText}>{formErrors.phone}</Text>}
 
@@ -1280,7 +1351,7 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         fontSize: fontSize(16),
-        color: '#1E293B',
+        color: '#000000',
     },
     filterHeader: {
         flexDirection: 'row',
@@ -1386,12 +1457,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 2,
+        flexWrap: 'wrap',
+        gap: 4,
     },
     leadName: {
         fontSize: fontSize(18),
         fontWeight: 'bold',
         color: '#1E293B',
-        marginRight: 8,
+        marginRight: 4,
+        flexShrink: 1,
     },
     statusBadge: {
         paddingHorizontal: 8,
@@ -1730,7 +1804,7 @@ const styles = StyleSheet.create({
         paddingVertical: verticalScale(16),
         alignItems: 'center',
         marginTop: verticalScale(30),
-        marginBottom: verticalScale(20),
+        marginBottom: verticalScale(10),
     },
     saveButtonText: {
         color: '#fff',
@@ -1759,7 +1833,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 15,
+        marginTop: 5,
         paddingVertical: 12,
         borderRadius: 12,
         backgroundColor: '#FEF2F2',
@@ -1956,6 +2030,24 @@ const styles = StyleSheet.create({
         fontSize: fontSize(11),
         color: '#94A3B8',
         fontWeight: '500',
+    },
+    activeStatCard: {
+        borderColor: '#7B61FF',
+        backgroundColor: '#F5F3FF',
+        shadowColor: '#7B61FF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    activeStatIndicator: {
+        position: 'absolute',
+        bottom: 0,
+        left: 12,
+        right: 12,
+        height: 2,
+        borderTopLeftRadius: 2,
+        borderTopRightRadius: 2,
     },
 });
 

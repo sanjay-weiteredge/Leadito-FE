@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "443183255651",
+    "project_id": "leadito-1",
+    "storage_bucket": "leadito-1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:443183255651:android:21ef57b064a9b933bae856",
+        "android_client_info": {
+          "package_name": "com.leaditoai.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBfqCMExEDVLjF3VNbAd1gKiptCU14eGuk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

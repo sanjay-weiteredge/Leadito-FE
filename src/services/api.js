@@ -5,6 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { navigate } from './navigationService';
 
 export const BASE_URL = 'https://leaditoai.com/api/';
+// export const BASE_URL = 'http://192.168.1.5:8000/api/';
+
 
 const api = axios.create({
     baseURL: BASE_URL,

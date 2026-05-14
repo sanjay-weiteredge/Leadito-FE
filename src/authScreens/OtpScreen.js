@@ -8,6 +8,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     Image,
+    ActivityIndicator,
     Dimensions,
 } from 'react-native';
 import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
@@ -16,21 +17,21 @@ import { Ionicons } from '@expo/vector-icons';
 import Images from '../components/image';
 import authService from '../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert } from 'react-native';
 import { useSubscription } from '../context/SubscriptionContext';
+import auth from '@react-native-firebase/auth';
+import { showSweetAlert } from '../components/SweetAlert';
 
 const { width } = Dimensions.get('window');
 
 const OtpScreen = ({ navigation, route }) => {
     const { checkSubscription } = useSubscription();
     const insets = useSafeAreaInsets();
-    const { phoneNumber } = route.params || {};
+    const { phoneNumber, confirmation: initialConfirmation } = route.params || {};
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [timer, setTimer] = useState(30);
     const [loading, setLoading] = useState(false);
+    const [confirmation, setConfirmation] = useState(initialConfirmation);
     const inputRefs = useRef([]);
-
-    const staticOtp = "123456";
 
     useEffect(() => {
         let interval;
@@ -59,47 +60,81 @@ const OtpScreen = ({ navigation, route }) => {
     };
 
     const handleVerify = async () => {
-        const enteredOtp = otp.join('');
-        if (enteredOtp.length < 6) {
-            Alert.alert('Incomplete OTP', 'Please enter the 6-digit code.');
-            return;
-        }
-
-        setLoading(true);
         try {
-            const data = await authService.verifyOtp(phoneNumber, enteredOtp);
+            if (!confirmation) {
+                showSweetAlert('Verification Failed', 'Your session is invalid. Please go back and try again.');
+                return;
+            }
 
-            await AsyncStorage.setItem('userToken', data.token);
-            await AsyncStorage.setItem('userProfile', JSON.stringify(data.user));
+            const code = otp.join('');
+            if (code.length < 6) {
+                showSweetAlert('Invalid OTP', 'Please enter all 6 digits.');
+                return;
+            }
 
-            // Refresh subscription status now that we have a valid token.
-            // This ensures the correct Paid/Free badge shows immediately.
-            await checkSubscription();
+            setLoading(true);
 
-            if (!data.user.isOnboarded) {
-                navigation.navigate('Onboarding');
-            } else {
-                navigation.navigate('Main');
+            // Firebase confirmation
+            const credential = await confirmation.confirm(code);
+            const idToken = await credential.user.getIdToken();
+
+            // Backend verification
+            const data = await authService.verifyFirebaseOtp(idToken);
+
+            if (data.token) {
+                await AsyncStorage.setItem('userToken', data.token);
+                await AsyncStorage.setItem('userProfile', JSON.stringify(data.user));
+                await checkSubscription();
+
+                if (data.isNewUser || !data.user.isOnboarded) {
+                    navigation.navigate('Onboarding');
+                } else {
+                    navigation.navigate('Main');
+                }
             }
         } catch (error) {
-            console.error('Verify OTP Error Details:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-            Alert.alert('Error', error.response?.data?.message || 'Invalid OTP. Please try again.');
+            console.error('🔥 Verify OTP Error:', error.code, error.message);
+            let errorMessage = 'The verification code is incorrect. Please try again.';
+
+            // Map technical/unknown errors to user-friendly messages
+            if (error.message && error.message.includes('session-info')) {
+                errorMessage = 'Your verification session has expired. Please resend the OTP.';
+            } else if (error.code === 'auth/invalid-verification-code') {
+                errorMessage = 'The code you entered is incorrect. Please check it and try again.';
+            } else if (error.code === 'auth/session-expired') {
+                errorMessage = 'Security session expired. Please resend the OTP.';
+            } else if (error.code === 'auth/code-expired') {
+                errorMessage = 'The OTP has expired. Please request a new one.';
+            } else if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            }
+
+            showSweetAlert('Verification Failed', errorMessage);
         } finally {
             setLoading(false);
         }
     };
 
     const handleResend = async () => {
-        setTimer(30);
+        if (loading) return;
+        setLoading(true);
         try {
-            await authService.sendOtp(phoneNumber);
-            Alert.alert('Success', 'OTP has been resent to your number.');
+            const fullPhoneNumber = `+91${phoneNumber}`;
+            const newConfirmation = await auth().signInWithPhoneNumber(fullPhoneNumber);
+            setConfirmation(newConfirmation);
+            setTimer(30);
+            showSweetAlert('OTP Resent', 'A new verification code has been sent to your phone.');
         } catch (error) {
-            Alert.alert('Error', 'Failed to resend OTP.');
+            console.log('🔥 Resend Error:', error.code, error.message);
+            let msg = 'Failed to resend OTP. Please try again later.';
+            if (error.code === 'auth/too-many-requests') {
+                msg = 'Too many requests. Please wait a few minutes before trying again.';
+            } else if (error.code === 'auth/network-request-failed') {
+                msg = 'Network error. Please check your connection.';
+            }
+            showSweetAlert('Resend Failed', msg);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -121,7 +156,7 @@ const OtpScreen = ({ navigation, route }) => {
 
                 <View style={styles.content}>
                     <View style={styles.logoContainer}>
-                        <Image source={require('../assessts/Leadito Logo.png')} style={styles.logo} resizeMode="contain" />
+                        <Image source={Images.logo} style={styles.logo} resizeMode="contain" />
                     </View>
 
                     <View style={styles.titleSection}>
@@ -151,13 +186,6 @@ const OtpScreen = ({ navigation, route }) => {
                         ))}
                     </View>
 
-                    <View style={styles.staticHintContainer}>
-                        <View style={styles.hintBadge}>
-                            <Ionicons name="information-circle-outline" size={16} color="#7B61FF" style={{ marginRight: 6 }} />
-                            <Text style={styles.hintLabel}>TEST OTP</Text>
-                            <Text style={styles.hintValue}>{staticOtp}</Text>
-                        </View>
-                    </View>
 
                     <TouchableOpacity
                         style={[styles.verifyButton, loading && { opacity: 0.7 }]}

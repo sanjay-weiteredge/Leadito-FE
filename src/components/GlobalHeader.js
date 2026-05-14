@@ -9,24 +9,24 @@ const GlobalHeader = ({ showNotification = true, onNotificationPress, showSuppor
     const navigation = useNavigation();
     const [unreadCount, setUnreadCount] = React.useState(0);
 
+    const fetchHeaderData = React.useCallback(async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+
+            if (token && showNotification) {
+                const data = await notificationService.listNotifications();
+                const count = data.filter(n => !n.isRead).length;
+                setUnreadCount(count);
+            }
+        } catch (e) {
+            console.log('Error fetching header data:', e);
+        }
+    }, [showNotification]);
+
     useFocusEffect(
         React.useCallback(() => {
-            const fetchNotifs = async () => {
-                try {
-                    const token = await AsyncStorage.getItem('userToken');
-                    if (token) {
-                        const data = await notificationService.listNotifications();
-                        const count = data.filter(n => !n.isRead).length;
-                        setUnreadCount(count);
-                    }
-                } catch (e) {
-                    console.log('Error fetching unread count:', e);
-                }
-            };
-            if (showNotification) {
-                fetchNotifs();
-            }
-        }, [showNotification])
+            fetchHeaderData();
+        }, [fetchHeaderData])
     );
 
     const handleNotifPress = () => {

@@ -9,13 +9,15 @@ import {
     ScrollView,
     KeyboardAvoidingView,
     Platform,
+    ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, AntDesign, FontAwesome } from '@expo/vector-icons';
 import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
 import Images from '../components/image';
-import authService from '../services/authService';
-import { ActivityIndicator, Alert } from 'react-native';
+import auth from '@react-native-firebase/auth';
+import { showSweetAlert } from '../components/SweetAlert';
 
 const LoginScreen = ({ navigation }) => {
     const insets = useSafeAreaInsets();
@@ -30,18 +32,26 @@ const LoginScreen = ({ navigation }) => {
 
         setLoading(true);
         try {
-            const data = await authService.sendOtp(phoneNumber);
-            console.log('OTP Result:', data);
-            navigation.navigate('Otp', { phoneNumber });
+            const fullPhoneNumber = `+91${phoneNumber}`;
+            console.log('Sending OTP to:', fullPhoneNumber);
+            const confirmation = await auth().signInWithPhoneNumber(fullPhoneNumber);
+            navigation.navigate('Otp', { phoneNumber, confirmation });
         } catch (error) {
-            console.log('🔥 OTP ERROR FULL:', {
-                message: error.message,
-                status: error.response?.status,
-                data: error.response?.data,
-                configUrl: error.config?.url,
-                header: error.config?.headers?.Authorization
-            });
-            Alert.alert('Error', error.response?.data?.message || 'Failed to send OTP. Please try again.');
+            console.log('🔥 FIREBASE OTP ERROR:', error.code, error.message);
+
+            let errorMessage = 'Failed to send OTP. Please try again.';
+            if (error.code === 'auth/invalid-phone-number') {
+                errorMessage = 'The phone number provided is invalid.';
+            } else if (error.code === 'auth/too-many-requests') {
+                errorMessage = 'Too many requests. Please try again later.';
+            } else if (error.code === 'auth/network-request-failed') {
+                errorMessage = 'Network error. Please check your internet connection.';
+            } else if (error.code === 'auth/app-not-authorized') {
+                errorMessage = 'This app is not authorized to use Firebase Authentication. Please check SHA-1 in Firebase Console.';
+            }
+
+            // Enhanced debugging: show the code to the user
+            showSweetAlert(`Login Error (${error.code || 'unknown'})`, errorMessage);
         } finally {
             setLoading(false);
         }

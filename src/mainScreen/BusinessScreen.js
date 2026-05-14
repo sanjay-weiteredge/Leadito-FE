@@ -22,10 +22,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import userService from '../services/userService';
 import { makeCall, openWhatsApp, getContactNumberSync } from '../utils/contact';
 import * as ImagePicker from 'expo-image-picker';
+import { useSubscription } from '../context/SubscriptionContext';
 
 const { width } = Dimensions.get('window');
 
 const BusinessScreen = ({ navigation }) => {
+    const { clearSubscription } = useSubscription();
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(false);
     const [editModalVisible, setEditModalVisible] = useState(false);
@@ -159,8 +161,12 @@ const BusinessScreen = ({ navigation }) => {
                     text: 'Logout',
                     style: 'destructive',
                     onPress: async () => {
+                        await clearSubscription();
                         await AsyncStorage.clear();
-                        navigation.replace('Login');
+                        navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'Login' }],
+                        });
                     }
                 }
             ]

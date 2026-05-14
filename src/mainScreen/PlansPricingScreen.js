@@ -10,6 +10,8 @@ import {
     Image,
     ImageBackground,
     RefreshControl,
+    Modal,
+    Linking,
 } from 'react-native';
 import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -18,11 +20,11 @@ import ScreenWrapper from '../components/ScreenWrapper';
 import GlobalHeader from '../components/GlobalHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeCall, openWhatsApp, getContactInfo, getCallNumberSync, getWhatsAppNumberSync } from '../utils/contact';
-import RazorpayCheckout from 'react-native-razorpay';
 import api from '../services/api';
 import { ActivityIndicator } from 'react-native';
 import { useSubscription } from '../context/SubscriptionContext';
 import { showSweetAlert } from '../components/SweetAlert';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width } = Dimensions.get('window');
 
@@ -66,12 +68,31 @@ const PlansPricingScreen = ({ navigation }) => {
     const [refreshing, setRefreshing] = useState(false);
     const [paymentLoading, setPaymentLoading] = useState(false);
     const { checkSubscription } = useSubscription();
-    // Razorpay Key is now fetched dynamically from the backend create-order response
+
+    // --- Manual Payment State ---
+    const [manualModalVisible, setManualModalVisible] = useState(false);
+    const [selectedPlanRef, setSelectedPlanRef] = useState(null);
+    const [paymentProof, setPaymentProof] = useState(null);
+    const [submittingProof, setSubmittingProof] = useState(false);
+
+    const [paymentLink, setPaymentLink] = useState("https://rzp.io/rzp/2XhtHctI");
 
     React.useEffect(() => {
         loadUser();
         fetchPlans();
+        fetchSettings();
     }, []);
+
+    const fetchSettings = async () => {
+        try {
+            const response = await api.get('/settings');
+            if (response.data && response.data.RAZORPAY_PAYMENT_LINK) {
+                setPaymentLink(response.data.RAZORPAY_PAYMENT_LINK);
+            }
+        } catch (error) {
+            console.error('Error fetching settings:', error);
+        }
+    };
 
     const fetchPlans = async () => {
         try {
@@ -189,82 +210,80 @@ const PlansPricingScreen = ({ navigation }) => {
 
         setPaymentLoading(true);
         try {
-            // 1. Create order on backend
-            const orderResponse = await api.post('/subscription/create-order', {
-                planId: plan.id
-            });
+            if (plan.paymentLink) {
+                // 1. Open Browser
+                Linking.openURL(plan.paymentLink);
 
-            const { orderId, amount, currency, planName, isRenewal, razorpayKey } = orderResponse.data;
+                // 2. Notify Backend (creates pending request for admin to check)
+                await api.post('/subscription/manual-payment', { planId: plan.id });
 
-            // 2. Razorpay options
-            const options = {
-                description: isRenewal
-                    ? `Renewal of ${planName} Plan`
-                    : `Upgrade to ${planName} Plan`,
-                currency: currency,
-                key: razorpayKey,
-                amount: amount,
-                name: 'Leadito',
-                order_id: orderId,
-                prefill: {
-                    email: user.email || '',
-                    contact: user.phone || '',
-                    name: user.name || ''
-                },
-                theme: { color: '#7405CB' }
-            };
-
-            // 3. Open Razorpay native checkout
-            RazorpayCheckout.open(options).then(async (data) => {
-                // 4. Verify payment on backend
-                try {
-                    const verifyResponse = await api.post('/subscription/verify-payment', {
-                        razorpay_order_id: data.razorpay_order_id,
-                        razorpay_payment_id: data.razorpay_payment_id,
-                        razorpay_signature: data.razorpay_signature,
-                        planId: plan.id
-                    });
-
-                    // Fetch fresh profile to get updated subscription details
-                    const profileRes = await api.get('/user/profile');
-                    const updatedUser = profileRes.data;
-                    await AsyncStorage.setItem('userProfile', JSON.stringify(updatedUser));
-                    setUser(updatedUser);
-
-                    // Update global subscription context
-                    await checkSubscription();
-
-                    const successMsg = verifyResponse.data.isRenewal
-                        ? `Your ${planName} plan has been extended! New expiry: ${new Date(updatedUser.subscriptions?.[0]?.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                        : `Your ${planName} plan is now active for the next ${plan.durationDays || 90} days!`;
-
-                    showSweetAlert('✅ Payment Successful', successMsg, {
-                        confirmText: 'Great!',
+                // 3. Final Guidance Alert
+                showSweetAlert(
+                    'Payment Initiated',
+                    'Once your payment is successful, it takes approximately 24 hours for our team to verify and activate your account. Thank you for your patience!',
+                    {
                         onConfirm: () => navigation.navigate('Home')
-                    });
-                } catch (verifyErr) {
-                    console.error('Payment verification error:', verifyErr);
-                    showSweetAlert('Error', 'Payment verification failed. Please contact support.');
-                }
-            }).catch((error) => {
-                console.error('Razorpay Error:', error);
-                if (error.code !== 2) { // 2 = cancelled by user
-                    let description = error.description;
-                    if (typeof description === 'string' && description.includes('{')) {
-                        try {
-                            const parsed = JSON.parse(description);
-                            description = parsed.error?.description || parsed.description || description;
-                        } catch (e) { /* ignore */ }
                     }
-                    showSweetAlert('Payment Error', `Error: ${description || 'Payment failed during authentication.'}`);
-                }
-            });
+                );
+            } else {
+                showSweetAlert('Manual Payment', 'No payment link found for this plan. Please contact support.');
+            }
         } catch (err) {
-            console.error('Order creation error:', err);
-            const errMsg = err.response?.data?.message || 'Failed to initiate payment. Please try again.';
-            showSweetAlert('Payment Failed', errMsg);
+            console.error('Plan selection error:', err);
+            showSweetAlert('Error', 'Failed to initiate process.');
         } finally {
             setPaymentLoading(false);
+        }
+    };
+
+    const pickProofImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            quality: 0.8,
+        });
+
+        if (!result.canceled) {
+            setPaymentProof(result.assets[0]);
+        }
+    };
+
+    const handleSubmitProof = async () => {
+        if (!paymentProof) {
+            showSweetAlert('Proof Required', 'Please upload a screenshot of your payment confirmation.');
+            return;
+        }
+
+        setSubmittingProof(true);
+        try {
+            const formData = new FormData();
+            formData.append('planId', selectedPlanRef.id);
+
+            const uri = paymentProof.uri;
+            const type = paymentProof.mimeType || 'image/jpeg';
+            const name = uri.split('/').pop();
+            formData.append('proof', { uri, type, name });
+
+            await api.post('/subscription/manual-payment', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            setManualModalVisible(false);
+            setPaymentProof(null);
+
+            showSweetAlert(
+                '✅ Request Submitted',
+                'Your payment proof has been uploaded. Admin will verify and activate your plan shortly.',
+                {
+                    onConfirm: () => navigation.navigate('Home')
+                }
+            );
+        } catch (err) {
+            console.error('Submit proof error:', err);
+            const msg = err.response?.data?.message || 'Failed to submit proof. Please contact support.';
+            showSweetAlert('Upload Failed', msg);
+        } finally {
+            setSubmittingProof(false);
         }
     };
 
@@ -310,7 +329,7 @@ const PlansPricingScreen = ({ navigation }) => {
 
     return (
         <ScreenWrapper style={styles.outerContainer}>
-            <GlobalHeader onNotificationPress={() => console.log('Notification Pressed')} />
+            <GlobalHeader onNotificationPress={() => navigation.navigate('Notifications')} />
 
             <ScrollView
                 showsVerticalScrollIndicator={false}
@@ -339,7 +358,9 @@ const PlansPricingScreen = ({ navigation }) => {
                     </View>
                 ) : (
                     <View style={styles.plansContainer}>
-                        {plans.map((plan) => {
+                        {plans.map((plan, index) => {
+                            const middleIndex = Math.floor(plans.length / 2);
+
                             // Find matching metadata from PLANS_METADATA array
                             const metadata = PLANS_METADATA.find(p =>
                                 plan.name.toLowerCase().includes(p.keyword) ||
@@ -350,9 +371,32 @@ const PlansPricingScreen = ({ navigation }) => {
                             const isActiveSub = user?.isActive && activeSub?.planId === Number(plan.id);
                             const isDifferentPlan = user?.isActive && activeSub?.planId !== Number(plan.id);
 
+                            const hasHighlight = plan.highlightTag && plan.highlightTag !== "None";
+                            // Force highlight for the middle plan, otherwise use the tag or metadata
+                            const isPopular = index === middleIndex || (hasHighlight ? plan.highlightTag === "Most Popular" : metadata.isPopular);
+
                             return (
-                                <View key={plan.id} style={[styles.planCard, metadata.isPopular && styles.popularPlanCard]}>
-                                    {metadata.isPopular && (
+                                <View key={plan.id} style={[styles.planCard, isPopular && styles.popularPlanCard]}>
+                                    {hasHighlight && (
+                                        <View style={[
+                                            styles.popularBadge,
+                                            plan.highlightTag === "Festival Offer" ? { backgroundColor: '#FF3B30' } :
+                                                plan.highlightTag === "Limited Offer" ? { backgroundColor: '#FF9500' } :
+                                                    plan.highlightTag === "Recommended" ? { backgroundColor: '#34C759' } :
+                                                        plan.highlightTag === "Trial Offer" ? { backgroundColor: '#007AFF' } :
+                                                            {} // Default styles.popularBadge is purple
+                                        ]}>
+                                            <Text style={styles.popularBadgeText}>
+                                                {plan.highlightTag === "Most Popular" ? "⭐ " :
+                                                    plan.highlightTag === "Limited Offer" ? "🔥 " :
+                                                        plan.highlightTag === "Festival Offer" ? "🎁 " :
+                                                            plan.highlightTag === "Trial Offer" ? "⌛ " :
+                                                                plan.highlightTag === "Recommended" ? "👍 " : ""}
+                                                {plan.highlightTag}
+                                            </Text>
+                                        </View>
+                                    )}
+                                    {!hasHighlight && metadata.isPopular && (
                                         <View style={styles.popularBadge}>
                                             <Text style={styles.popularBadgeText}>Most Popular</Text>
                                         </View>
@@ -453,21 +497,6 @@ const PlansPricingScreen = ({ navigation }) => {
                             </View>
                         </View>
                     </View>
-
-                    <View style={styles.understandingCard}>
-                        <Text style={styles.subSectionTitle}>👉 Important Understanding:</Text>
-                        <View style={styles.formulaRow}>
-                            <View style={styles.formulaItem}>
-                                <Text style={styles.formulaLabel}>Higher ad budget</Text>
-                                <Text style={styles.formulaResult}>More reach → More clicks → More leads</Text>
-                            </View>
-                            <View style={styles.formulaItem}>
-                                <Text style={styles.formulaLabel}>Lower ad budget</Text>
-                                <Text style={styles.formulaResult}>Limited reach → Fewer leads</Text>
-                            </View>
-                        </View>
-                    </View>
-
                     <View style={styles.exampleSection}>
                         <Text style={styles.subSectionTitle}>📈 Example:</Text>
                         <View style={styles.exampleCard}>
@@ -486,7 +515,53 @@ const PlansPricingScreen = ({ navigation }) => {
                         </View>
                     </View>
 
-                    <View style={styles.noteSection}>
+                    <View style={styles.importantNotesSectionInside}>
+                        <Text style={styles.importantNotesTitleSmall}>Important Notes</Text>
+                        <View style={styles.notesList}>
+                            <View style={styles.newNoteItem}>
+                                <View style={styles.noteTitleRow}>
+                                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                                    <Text style={styles.newNoteTitle}>Ad Budget is Separate</Text>
+                                </View>
+                                <Text style={styles.newNoteDesc}>Advertising spend is charged separately from the service/management fee.</Text>
+                            </View>
+
+                            <View style={styles.newNoteItem}>
+                                <View style={styles.noteTitleRow}>
+                                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                                    <Text style={styles.newNoteTitle}>Consistent Lead Generation System</Text>
+                                </View>
+                                <Text style={styles.newNoteDesc}>Our campaigns are optimized to generate high-intent business leads.</Text>
+                            </View>
+
+                            <View style={styles.resultsDependContainer}>
+                                <View style={styles.noteTitleRow}>
+                                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                                    <Text style={styles.newNoteTitle}>Results Depend On:</Text>
+                                </View>
+                                <View style={styles.subNoteList}>
+                                    {['Business niche', 'Offer quality', 'Ad budget consistency', 'Follow-up speed', 'Sales conversion process'].map((item, index) => (
+                                        <View key={index} style={styles.subNoteItem}>
+                                            <View style={styles.subNoteDot} />
+                                            <Text style={styles.impNoteSubText}>{item}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            </View>
+
+                            <View style={styles.newNoteItem}>
+                                <View style={styles.noteTitleRow}>
+                                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                                    <Text style={styles.newNoteTitle}>Better Follow-Up = Better Results</Text>
+                                </View>
+                                <Text style={styles.newNoteDesc}>Fast response and proper follow-up improve lead quality and conversions</Text>
+                            </View>
+                        </View>
+                    </View>
+
+
+
+                    {/* <View style={styles.noteSection}>
                         <View style={styles.noteHeader}>
                             <Ionicons name="warning" size={20} color="#F59E0B" />
                             <Text style={styles.noteTitle}>Important Note:</Text>
@@ -502,7 +577,7 @@ const PlansPricingScreen = ({ navigation }) => {
                                 <Text style={styles.subNoteText}>- Market demand</Text>
                             </View>
                         </View>
-                    </View>
+                    </View> */}
                 </View>
 
                 <View style={styles.commitmentSection}>
@@ -562,43 +637,6 @@ const PlansPricingScreen = ({ navigation }) => {
                     </View>
                 </View>
 
-                <View style={styles.importantNotesSection}>
-                    <Text style={styles.importantNotesTitle}>Important Notes</Text>
-                    <View style={styles.notesList}>
-                        <View style={styles.noteItem}>
-                            <Ionicons name="wallet-outline" size={20} color="#7B61FF" />
-                            <Text style={styles.noteText}>Ad budget is separate from service fee</Text>
-                        </View>
-                        <View style={styles.noteItem}>
-                            <Ionicons name="stats-chart-outline" size={20} color="#7B61FF" />
-                            <Text style={styles.noteText}>Lead numbers are approximate, not guaranteed</Text>
-                        </View>
-                        <View style={styles.resultsDependContainer}>
-                            <View style={styles.noteItemHeader}>
-                                <Ionicons name="options-outline" size={20} color="#7B61FF" />
-                                <Text style={[styles.noteText, { fontWeight: '700', color: '#1E293B' }]}>Results depend on:</Text>
-                            </View>
-                            <View style={styles.subNoteList}>
-                                <View style={styles.subNoteItem}>
-                                    <View style={styles.subNoteDot} />
-                                    <Text style={styles.impNoteSubText}>Business niche</Text>
-                                </View>
-                                <View style={styles.subNoteItem}>
-                                    <View style={styles.subNoteDot} />
-                                    <Text style={styles.impNoteSubText}>Offer quality</Text>
-                                </View>
-                                <View style={styles.subNoteItem}>
-                                    <View style={styles.subNoteDot} />
-                                    <Text style={styles.impNoteSubText}>Budget consistency</Text>
-                                </View>
-                                <View style={styles.subNoteItem}>
-                                    <View style={styles.subNoteDot} />
-                                    <Text style={styles.impNoteSubText}>Follow-up and conversion process</Text>
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-                </View>
 
                 {/* Final CTA Image Banner */}
                 <TouchableOpacity style={styles.imageBannerContainer} onPress={handleWhatsApp} activeOpacity={0.9}>
@@ -642,9 +680,12 @@ const PlansPricingScreen = ({ navigation }) => {
                     <Text style={styles.footerNoteText}>Secure. Cancel anytime. No hidden charges.</Text>
                 </View> */}
             </View>
-        </ScreenWrapper>
+            {/* {renderManualPaymentModal()} */}
+        </ScreenWrapper >
     );
 };
+
+
 
 const styles = StyleSheet.create({
     outerContainer: {
@@ -1488,6 +1529,45 @@ const styles = StyleSheet.create({
         color: '#475569',
         fontWeight: '500',
         flex: 1,
+    },
+    importantNotesSectionInside: {
+        marginTop: 20,
+        backgroundColor: '#fff',
+        padding: 20,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    importantNotesTitleSmall: {
+        fontSize: fontSize(16),
+        fontWeight: 'bold',
+        color: '#1E293B',
+        marginBottom: 15,
+    },
+    newNoteItem: {
+        backgroundColor: '#fff',
+        padding: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+        marginBottom: 12,
+    },
+    noteTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 6,
+    },
+    newNoteTitle: {
+        fontSize: fontSize(15),
+        fontWeight: 'bold',
+        color: '#1E293B',
+    },
+    newNoteDesc: {
+        fontSize: fontSize(13),
+        color: '#64748B',
+        lineHeight: 20,
+        paddingLeft: 30,
     },
     resultsDependContainer: {
         backgroundColor: '#fff',

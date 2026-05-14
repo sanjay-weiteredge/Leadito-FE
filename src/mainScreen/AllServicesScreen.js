@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Image } from 'react-native';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import publicService from '../services/publicService';
@@ -59,7 +59,15 @@ const AllServicesScreen = ({ navigation }) => {
                         return (
                             <View key={service.id} style={styles.serviceCard}>
                                 <View style={[styles.iconBox, { backgroundColor: iconData.bg }]}>
-                                    <Ionicons name={iconData.name} size={28} color={iconData.color} />
+                                    {service.iconUrl ? (
+                                        <Image
+                                            source={{ uri: service.iconUrl }}
+                                            style={{ width: 34, height: 34 }}
+                                            resizeMode="contain"
+                                        />
+                                    ) : (
+                                        <Ionicons name={iconData.name} size={28} color={iconData.color} />
+                                    )}
                                 </View>
                                 <View style={styles.contentBox}>
                                     <Text style={styles.serviceTitle}>{service.title}</Text>
