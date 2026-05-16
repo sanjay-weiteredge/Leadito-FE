@@ -111,9 +111,18 @@ const BusinessScreen = ({ navigation }) => {
             if (selectedImage) {
                 const uri = selectedImage.uri;
                 const type = selectedImage.mimeType || 'image/jpeg';
-                const name = uri.split('/').pop();
-                formData.append('logo', { uri, type, name });
-            } else {
+                // Ensure filename has an extension
+                const uriParts = uri.split('/');
+                const fileName = uriParts[uriParts.length - 1];
+                const extension = fileName.includes('.') ? '' : '.jpg';
+                const name = fileName + extension;
+
+                formData.append('logo', {
+                    uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+                    type,
+                    name
+                });
+            } else if (editForm.logoUrl) {
                 formData.append('logoUrl', editForm.logoUrl);
             }
 
@@ -411,7 +420,11 @@ const BusinessScreen = ({ navigation }) => {
                 transparent={true}
                 onRequestClose={() => setEditModalVisible(false)}
             >
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : null}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                    style={styles.modalOverlay}
+                >
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Edit Profile</Text>
@@ -420,13 +433,19 @@ const BusinessScreen = ({ navigation }) => {
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            style={styles.modalScroll}
+                            contentContainerStyle={{ paddingBottom: 40 }}
+                            keyboardShouldPersistTaps="handled"
+                        >
                             <Text style={styles.inputLabel}>Full Name</Text>
                             <TextInput
                                 style={styles.input}
                                 value={editForm.name}
                                 onChangeText={(text) => setEditForm({ ...editForm, name: text })}
                                 placeholder="Enter full name"
+                                placeholderTextColor="#000"
                             />
 
                             <Text style={styles.inputLabel}>Business Name</Text>
@@ -435,6 +454,7 @@ const BusinessScreen = ({ navigation }) => {
                                 value={editForm.businessName}
                                 onChangeText={(text) => setEditForm({ ...editForm, businessName: text })}
                                 placeholder="Enter business name"
+                                placeholderTextColor="#000"
                             />
 
                             <Text style={styles.inputLabel}>Email Address</Text>
@@ -443,6 +463,7 @@ const BusinessScreen = ({ navigation }) => {
                                 value={editForm.email}
                                 onChangeText={(text) => setEditForm({ ...editForm, email: text })}
                                 placeholder="example@business.com"
+                                placeholderTextColor="#000"
                                 keyboardType="email-address"
                             />
 
@@ -452,6 +473,7 @@ const BusinessScreen = ({ navigation }) => {
                                 value={editForm.businessAddress}
                                 onChangeText={(text) => setEditForm({ ...editForm, businessAddress: text })}
                                 placeholder="Street, Area, etc."
+                                placeholderTextColor="#000"
                             />
 
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -462,6 +484,7 @@ const BusinessScreen = ({ navigation }) => {
                                         value={editForm.city}
                                         onChangeText={(text) => setEditForm({ ...editForm, city: text })}
                                         placeholder="City"
+                                        placeholderTextColor="#000"
                                     />
                                 </View>
                                 <View style={{ width: '48%' }}>
@@ -471,6 +494,7 @@ const BusinessScreen = ({ navigation }) => {
                                         value={editForm.state}
                                         onChangeText={(text) => setEditForm({ ...editForm, state: text })}
                                         placeholder="State"
+                                        placeholderTextColor="#000"
                                     />
                                 </View>
                             </View>

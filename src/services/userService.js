@@ -12,7 +12,7 @@ const userService = {
     },
 
     updateProfile: async (data) => {
-        const config = data instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
+        const config = data instanceof FormData ? { headers: { 'Accept': 'application/json' } } : {};
         const response = await api.put('/user/profile', data, config);
         return response.data;
     },

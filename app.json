@@ -28,14 +28,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "bc94e901-b1cc-4946-a400-47e0e336399b"
-      }
-    },
     "plugins": [
       "@react-native-firebase/app",
       "@react-native-firebase/auth"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "23c73db8-f18d-4f0e-85a0-61c67cb4c4f0"
+      }
+    }
   }
 }

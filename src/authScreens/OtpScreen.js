@@ -26,7 +26,7 @@ const { width } = Dimensions.get('window');
 const OtpScreen = ({ navigation, route }) => {
     const { checkSubscription } = useSubscription();
     const insets = useSafeAreaInsets();
-    const { phoneNumber, confirmation: initialConfirmation } = route.params || {};
+    const { phoneNumber, confirmation: initialConfirmation, isTest, testOtp } = route.params || {};
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [timer, setTimer] = useState(30);
     const [loading, setLoading] = useState(false);
@@ -61,11 +61,6 @@ const OtpScreen = ({ navigation, route }) => {
 
     const handleVerify = async () => {
         try {
-            if (!confirmation) {
-                showSweetAlert('Verification Failed', 'Your session is invalid. Please go back and try again.');
-                return;
-            }
-
             const code = otp.join('');
             if (code.length < 6) {
                 showSweetAlert('Invalid OTP', 'Please enter all 6 digits.');
@@ -74,9 +69,51 @@ const OtpScreen = ({ navigation, route }) => {
 
             setLoading(true);
 
-            // Firebase confirmation
-            const credential = await confirmation.confirm(code);
-            const idToken = await credential.user.getIdToken();
+            // Handle Test Bypass
+            if (isTest) {
+                if (code === testOtp) {
+                    console.log('🧪 Test OTP Verified locally');
+                    // We call verifyFirebaseOtp with a special marker if your backend supports it,
+                    // or we can simulate the backend response if this is just for UI testing.
+                    // For now, we'll try to get a "test token" or just fake success if backend hasn't been updated.
+
+                    try {
+                        // Attempting to use a test route or dummy token if backend allows
+                        const data = await authService.verifyFirebaseOtp('TEST_TOKEN_' + phoneNumber);
+
+                        if (data.token) {
+                            await AsyncStorage.setItem('userToken', data.token);
+                            await AsyncStorage.setItem('userProfile', JSON.stringify(data.user));
+                            await checkSubscription();
+                            navigation.navigate(data.isNewUser || !data.user.isOnboarded ? 'Onboarding' : 'Main');
+                            return;
+                        }
+                    } catch (e) {
+                        console.log("Backend doesn't support TEST_TOKEN, simulating local success");
+                        // Fallback for pure UI testing if backend fails
+                        // Remove this in production
+                        await AsyncStorage.setItem('userToken', 'mock_token');
+                        await AsyncStorage.setItem('userProfile', JSON.stringify({ name: 'Test User', phone: phoneNumber, isOnboarded: true }));
+                        navigation.navigate('Main');
+                        return;
+                    }
+                } else {
+                    showSweetAlert('Invalid OTP', 'The test code you entered is incorrect.');
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            if (!confirmation) {
+                showSweetAlert('Verification Failed', 'Your session is invalid. Please go back and try again.');
+                setLoading(false);
+                return;
+            }
+
+            // Firebase confirmation using string verificationId for stability
+            const firebaseCredential = auth.PhoneAuthProvider.credential(route.params.verificationId, code);
+            const userCredential = await auth().signInWithCredential(firebaseCredential);
+            const idToken = await userCredential.user.getIdToken();
 
             // Backend verification
             const data = await authService.verifyFirebaseOtp(idToken);
@@ -121,7 +158,7 @@ const OtpScreen = ({ navigation, route }) => {
         try {
             const fullPhoneNumber = `+91${phoneNumber}`;
             const newConfirmation = await auth().signInWithPhoneNumber(fullPhoneNumber);
-            setConfirmation(newConfirmation);
+            navigation.setParams({ verificationId: newConfirmation.verificationId });
             setTimer(30);
             showSweetAlert('OTP Resent', 'A new verification code has been sent to your phone.');
         } catch (error) {

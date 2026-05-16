@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { scale, verticalScale, moderateScale, fontSize } from '../utils/responsive';
-import { Ionicons, MaterialCommunityIcons, Feather, Entypo } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import ScreenWrapper from '../components/ScreenWrapper';
 import leadService from '../services/leadService';
@@ -845,7 +845,11 @@ const LeadsScreen = ({ navigation }) => {
                 transparent={true}
                 onRequestClose={() => setAddModalVisible(false)}
             >
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : null}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                    style={styles.modalOverlay}
+                >
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Add New Lead</Text>
@@ -854,7 +858,12 @@ const LeadsScreen = ({ navigation }) => {
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            style={styles.modalScroll}
+                            contentContainerStyle={{ paddingBottom: 40 }}
+                            keyboardShouldPersistTaps="handled"
+                        >
                             <Text style={styles.inputLabel}>Lead Name *</Text>
                             <TextInput
                                 style={[styles.input, formErrors.name && styles.inputError]}
@@ -951,7 +960,11 @@ const LeadsScreen = ({ navigation }) => {
                 transparent={true}
                 onRequestClose={() => setEditModalVisible(false)}
             >
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : null}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                    style={styles.modalOverlay}
+                >
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Update Lead</Text>
@@ -960,7 +973,12 @@ const LeadsScreen = ({ navigation }) => {
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            style={styles.modalScroll}
+                            contentContainerStyle={{ paddingBottom: 40 }}
+                            keyboardShouldPersistTaps="handled"
+                        >
 
                             <Text style={styles.inputLabel}>Lead Status</Text>
                             <View style={styles.chipsRow}>
@@ -1112,7 +1130,11 @@ const LeadsScreen = ({ navigation }) => {
                 transparent={true}
                 onRequestClose={() => setNoteEditModalVisible(false)}
             >
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : null}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                    style={styles.modalOverlay}
+                >
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Edit Follow-up Note</Text>

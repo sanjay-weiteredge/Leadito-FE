@@ -17,8 +17,8 @@ const authService = {
     },
 
     onboarding: async (data) => {
-        const config = data instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
-        const response = await api.post('auth/onboarding', data, config);
+        // REMOVED manual Content-Type: multipart/form-data as it breaks Axios boundary generation
+        const response = await api.post('auth/onboarding', data);
         return response.data;
     },
 };

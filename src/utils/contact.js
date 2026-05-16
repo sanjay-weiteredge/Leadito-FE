@@ -8,9 +8,9 @@ export const CONTACT_NUMBERS = {
         WHATSAPP: '8374891211', // Admin: Update this for Free User WhatsApp
     },
     PAID: {
-        TEAM: 'Delivery Team',
-        CALL: '9912526055',
-        WHATSAPP: '9912526055', // Admin: Update this for Paid User WhatsApp
+        TEAM: 'Support Team',
+        CALL: '8374891211',
+        WHATSAPP: '8374891211', // Admin: Updated to unified support number
     },
 };
 

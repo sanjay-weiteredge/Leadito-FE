@@ -24,6 +24,13 @@ const LoginScreen = ({ navigation }) => {
     const [phoneNumber, setPhoneNumber] = useState('');
     const [loading, setLoading] = useState(false);
 
+    // Test numbers to bypass Firebase during development/testing
+    const TEST_NUMBERS = {
+        '6304969956': '123456',
+        '8888888888': '123456', // Example of keeping an "existing" one
+    };
+
+
     const handleSendOtp = async () => {
         if (phoneNumber.length < 10) {
             Alert.alert('Invalid Phone', 'Please enter a valid 10-digit phone number.');
@@ -34,8 +41,20 @@ const LoginScreen = ({ navigation }) => {
         try {
             const fullPhoneNumber = `+91${phoneNumber}`;
             console.log('Sending OTP to:', fullPhoneNumber);
+
+            // Bypass Firebase for test numbers
+            if (TEST_NUMBERS[phoneNumber]) {
+                console.log('🧪 Using Test Login Bypass');
+                navigation.navigate('Otp', {
+                    phoneNumber,
+                    isTest: true,
+                    testOtp: TEST_NUMBERS[phoneNumber]
+                });
+                return;
+            }
+
             const confirmation = await auth().signInWithPhoneNumber(fullPhoneNumber);
-            navigation.navigate('Otp', { phoneNumber, confirmation });
+            navigation.navigate('Otp', { phoneNumber, verificationId: confirmation.verificationId });
         } catch (error) {
             console.log('🔥 FIREBASE OTP ERROR:', error.code, error.message);
 
